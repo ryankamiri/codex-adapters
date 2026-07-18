@@ -13,6 +13,7 @@ import Fastify from "fastify";
 import { getChatRuntime, getThreadForClient, runExclusive } from "./codex-runtime";
 import { codexEventToChunks, newStreamCtx, type UiChunk } from "./codex/ui-stream";
 import type { TurnHandle } from "./codex/contract";
+import { listImessageUiThreads } from "./imessage-harness/thread-feed";
 
 // Fastify's default bodyLimit is 1 MiB, which a single chat request can exceed
 // (a pasted blob or an image attachment) — the client then sees an opaque HTTP
@@ -26,6 +27,51 @@ const app = Fastify({ logger: true, bodyLimit: 32 * 1024 * 1024 });
 const activeTurns = new Map<string, TurnHandle>();
 
 app.get("/health", async () => ({ status: "ok" }));
+
+// Trusted inbound texts run in the detached listener process, so expose their
+// durable task records to the browser. The frontend turns each record into a
+// normal visible sidebar thread and updates it as the task completes.
+app.get("/api/imessage/threads", async (_req, reply) => {
+  return reply.send({ threads: listImessageUiThreads() });
+});
+
+// Keep one quiet connection open for live sidebar updates. A snapshot is sent
+// only when the durable ledger changes; this replaces browser polling that
+// generated a pair of HTTP log lines every 1.5 seconds.
+app.get("/api/imessage/events", async (req, reply) => {
+  reply.hijack();
+  const raw = reply.raw;
+  raw.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  raw.write("retry: 10000\n\n");
+
+  let previous = "";
+  const publish = () => {
+    if (raw.destroyed || raw.writableEnded) return;
+    try {
+      const payload = JSON.stringify({ threads: listImessageUiThreads() });
+      if (payload === previous) return;
+      previous = payload;
+      raw.write(`event: threads\ndata: ${payload}\n\n`);
+    } catch (error) {
+      req.log.error({ error }, "failed to read iMessage thread feed");
+    }
+  };
+
+  publish();
+  const feedTimer = setInterval(publish, 1_500);
+  const heartbeatTimer = setInterval(() => {
+    if (!raw.destroyed && !raw.writableEnded) raw.write(": keep-alive\n\n");
+  }, 15_000);
+  raw.on("close", () => {
+    clearInterval(feedTimer);
+    clearInterval(heartbeatTimer);
+  });
+});
 
 // Serve snapshot artifacts so the workspace panel can render them as
 // <img src="/artifacts?path=<abs>">. Agents write screenshots wherever they like

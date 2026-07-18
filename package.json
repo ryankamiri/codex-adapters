@@ -9,7 +9,14 @@
     "cli": "tsx backend/src/cli.ts",
     "generate": "tsx backend/src/generator-cli.ts",
     "typecheck": "tsc -p backend/tsconfig.json --noEmit",
-    "dev:backend": "tsx watch backend/src/server.ts"
+    "dev:backend": "tsx watch backend/src/server.ts",
+    "imessage:dry-run": "tsx backend/src/imessage-harness/main.ts --mode dry-run",
+    "imessage:start": "tsx backend/src/imessage-harness/main.ts --mode auto-send",
+    "imessage:smoke": "node scripts/imessage-harness-smoke.mjs",
+    "test:codex": "node --import tsx --test backend/test/codex/*.test.ts backend/test/ui-stream.test.ts",
+    "test:frontend-proxy": "node --import tsx --test frontend/test/*.test.ts",
+    "test:imessage": "node --import tsx --test backend/test/imessage-harness/*.test.ts",
+    "test:imessage-control": "node --test adapters/imessage-listener-mcp/test/*.test.mjs"
   },
   "repository": {
     "type": "git",

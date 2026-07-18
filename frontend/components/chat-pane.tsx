@@ -65,9 +65,9 @@ export function ChatPane({ messages, status, onSend, onStop, models, model, setM
             on the right next to the submit button, ChatGPT-style. */}
         <PromptInputTools />
         <div className="flex items-center gap-1">
-          {(models.length > 0 || model) && (
+          {model !== null && (
             <PromptInputSelect
-              value={model ?? undefined}
+              value={model}
               onValueChange={(value) => setModel(String(value))}
             >
               <PromptInputSelectTrigger>

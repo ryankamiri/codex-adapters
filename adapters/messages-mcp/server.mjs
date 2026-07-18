@@ -330,7 +330,19 @@ function errorText(error) {
   return stderr || error?.message || String(error);
 }
 
+const debug = (event, details = {}) =>
+  process.stderr.write(`[messages-mcp] ${JSON.stringify({ event, ...details })}\n`);
+const toolLabel = (name) => TOOLS.some((tool) => tool.name === name) ? name : "<unknown>";
+const errorDetails = (error) => ({
+  errorType: error?.name || "Error",
+  ...(typeof error?.code === "string" || typeof error?.code === "number" ? { errorCode: error.code } : {}),
+});
+
 async function callTool(id, name, args = {}) {
+  const tool = toolLabel(name);
+  const startedAt = Date.now();
+  let status = "completed";
+  debug("tool_call_started", { tool });
   try {
     if (name === "observe_messages" || name === "capture_chats") {
       const maximum = name === "capture_chats" ? 500 : 100;
@@ -384,7 +396,11 @@ async function callTool(id, name, args = {}) {
 
     return toolResult(id, `unknown tool: ${name}`, true);
   } catch (error) {
+    status = "failed";
+    debug("tool_call_failed", { tool, ...errorDetails(error) });
     return toolResult(id, `${name || "tool"} failed: ${errorText(error)}`, true);
+  } finally {
+    debug("tool_call_finished", { tool, status, durationMs: Date.now() - startedAt });
   }
 }
 
@@ -400,6 +416,7 @@ rl.on("line", (line) => {
 
   const { id, method, params } = message;
   if (method === "initialize") {
+    debug("client_initialized");
     send({
       jsonrpc: "2.0",
       id,
@@ -417,3 +434,7 @@ rl.on("line", (line) => {
     send({ jsonrpc: "2.0", id, result: {} });
   }
 });
+
+rl.on("close", () => debug("shutdown", { reason: "stdin_closed" }));
+process.once("exit", (code) => debug("process_exit", { code }));
+debug("ready", { transport: "stdio" });

@@ -133,6 +133,14 @@ const errorText = (error) => {
   return stderr || error?.message || String(error);
 };
 
+const debug = (event, details = {}) =>
+  process.stderr.write(`[clash-royale-mcp] ${JSON.stringify({ event, ...details })}\n`);
+const toolLabel = (name) => TOOLS.some((tool) => tool.name === name) ? name : "<unknown>";
+const errorDetails = (error) => ({
+  errorType: error?.name || "Error",
+  ...(typeof error?.code === "string" || typeof error?.code === "number" ? { errorCode: error.code } : {}),
+});
+
 const TOOLS = [
   {
     name: "strategy",
@@ -406,6 +414,10 @@ const READING_GUIDE = {
 };
 
 async function callTool(id, name, args = {}) {
+  const tool = toolLabel(name);
+  const startedAt = Date.now();
+  let status = "completed";
+  debug("tool_call_started", { tool });
   try {
     switch (name) {
       case "strategy": {
@@ -491,12 +503,17 @@ async function callTool(id, name, args = {}) {
         return errResult(id, `unknown tool: ${name}`);
     }
   } catch (error) {
+    status = "failed";
+    debug("tool_call_failed", { tool, ...errorDetails(error) });
     return errResult(id, `${name || "tool"} failed: ${errorText(error)}`);
+  } finally {
+    debug("tool_call_finished", { tool, status, durationMs: Date.now() - startedAt });
   }
 }
 
-// Warm the compiled mouse binary at startup so the first tap is already fast.
-mouseBinary();
+// Compile lazily on the first input action. Starting subprocess work before the
+// MCP initialize handshake can leave app-server waiting indefinitely for this
+// server, which blocks unrelated turns that never intend to use Clash Royale.
 
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
@@ -510,6 +527,7 @@ rl.on("line", (line) => {
 
   const { id, method, params } = message;
   if (method === "initialize") {
+    debug("client_initialized");
     send({
       jsonrpc: "2.0",
       id,
@@ -527,3 +545,7 @@ rl.on("line", (line) => {
     send({ jsonrpc: "2.0", id, result: {} });
   }
 });
+
+rl.on("close", () => debug("shutdown", { reason: "stdin_closed" }));
+process.once("exit", (code) => debug("process_exit", { code }));
+debug("ready", { transport: "stdio" });

@@ -1,0 +1,12 @@
+{
+  "name": "imessage-listener-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP control plane for the local iMessage-to-Codex listener",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

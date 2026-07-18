@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.codex-adapters.imessage-harness</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/absolute/path/to/node</string>
+    <string>/absolute/path/to/node_modules/tsx/dist/cli.mjs</string>
+    <string>/absolute/path/to/codex-adapters/backend/src/imessage-harness/main.ts</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/absolute/path/to/codex-adapters</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>IMESSAGE_HARNESS_CONFIG</key>
+    <string>/absolute/private/path/imessage-harness.json</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>/tmp/com.codex-adapters.imessage-harness.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/com.codex-adapters.imessage-harness.err.log</string>
+</dict>
+</plist>
