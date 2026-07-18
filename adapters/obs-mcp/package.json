@@ -1,0 +1,17 @@
+{
+  "name": "obs-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Codex Bodies adapter: an MCP server that drives OBS Studio over obs-websocket v5 (scene switching, recording, screenshots).",
+  "main": "server.mjs",
+  "bin": {
+    "obs-mcp": "server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "obs-websocket-js": "^5.0.8"
+  }
+}
