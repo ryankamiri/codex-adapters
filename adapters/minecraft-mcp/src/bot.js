@@ -17,9 +17,6 @@ import pvpPkg from "mineflayer-pvp";
 import toolPkg from "mineflayer-tool";
 import armorManager from "mineflayer-armor-manager";
 import { loader as autoEat } from "mineflayer-auto-eat";
-import viewerPkg from "prismarine-viewer";
-
-const mineflayerViewer = viewerPkg.mineflayer; // browser-rendered POV for snapshots
 
 const { pathfinder, Movements } = pathfinderPkg;
 const { plugin: collectBlock } = collectblockPkg; // pathfind → mine → pick up drops
@@ -78,14 +75,6 @@ export function createMinecraftBot(cfg) {
 
         if (cfg.difficulty) bot.chat(`/difficulty ${cfg.difficulty}`); // optional, needs op
         bot.chat(`/gamemode ${cfg.gameMode} @s`); // needs op; fails silently otherwise
-
-        // First-person world render — the hidden camera capture_snapshot
-        // photographs (agent's own POV, works while you play on screen).
-        try {
-          mineflayerViewer(bot, { port: cfg.viewerPort, firstPerson: true });
-        } catch (e) {
-          console.error("[minecraft-mcp] viewer failed to start (snapshots fall back to screencapture):", e?.message ?? e);
-        }
 
         // ── reflexes (non-fatal if a plugin's API drifts) ──
         try {

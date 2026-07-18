@@ -6,7 +6,8 @@
 // It takes the latest user text, runs a codex turn on the shared thread, and maps
 // each AgentEvent to AI SDK UI-message-stream chunks (see codex/ui-stream.ts).
 
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { extname, isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import Fastify from "fastify";
@@ -39,6 +40,17 @@ const IMAGE_MIME: Record<string, string> = {
   ".gif": "image/gif",
   ".webp": "image/webp",
 };
+// Screen recordings (obs-mcp). These are served with range support below so
+// <video> can seek; images stay on the simple read-whole-file path.
+// NOTE .mkv is listed because OBS can produce it, but no browser plays it —
+// record to mp4/mov if you want it to play in the workspace.
+const VIDEO_MIME: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm",
+  ".mkv": "video/x-matroska",
+};
+const MEDIA_MIME: Record<string, string> = { ...IMAGE_MIME, ...VIDEO_MIME };
 const ALLOWED_ROOTS = [
   ARTIFACTS_DIR,
   join(process.cwd(), "data"),
@@ -53,15 +65,56 @@ app.get("/artifacts", async (req, reply) => {
   const requested = (req.query as { path?: string }).path ?? "";
   if (!requested) return reply.code(400).send({ error: "missing path" });
 
-  const mime = IMAGE_MIME[extname(requested).toLowerCase()];
+  const ext = extname(requested).toLowerCase();
+  const mime = MEDIA_MIME[ext];
   if (!mime) return reply.code(415).send({ error: "unsupported type" });
 
   const abs = isAbsolute(requested) ? requested : join(ARTIFACTS_DIR, requested);
+  let real: string;
   try {
-    const real = await realpath(abs); // resolves symlinks (/tmp -> /private/tmp on macOS)
-    const allowed = ALLOWED_ROOTS.some((root) => real === root || real.startsWith(root + "/"));
-    if (!allowed) return reply.code(403).send({ error: "forbidden" });
-    return reply.type(mime).send(await readFile(real));
+    real = await realpath(abs); // resolves symlinks (/tmp -> /private/tmp on macOS)
+  } catch {
+    return reply.code(404).send({ error: "not found" });
+  }
+  const allowed = ALLOWED_ROOTS.some((root) => real === root || real.startsWith(root + "/"));
+  if (!allowed) return reply.code(403).send({ error: "forbidden" });
+
+  try {
+    if (!VIDEO_MIME[ext]) return reply.type(mime).send(await readFile(real));
+
+    // Video: honour Range. Browsers issue a range request for <video> and treat
+    // a 200-with-whole-file as unseekable — Safari refuses to play at all — so
+    // reply 206 with the exact slice rather than buffering the file into memory.
+    const { size } = await stat(real);
+    const range = req.headers.range;
+    const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+
+    if (!m) {
+      return reply
+        .type(mime)
+        .header("accept-ranges", "bytes")
+        .header("content-length", String(size))
+        .send(createReadStream(real));
+    }
+
+    // An open-ended suffix range ("bytes=-500") means the LAST n bytes.
+    const [, rawStart, rawEnd] = m;
+    let start = rawStart === "" ? size - Number(rawEnd) : Number(rawStart);
+    let end = rawStart === "" || rawEnd === "" ? size - 1 : Number(rawEnd);
+    start = Math.max(0, start);
+    end = Math.min(end, size - 1);
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+      return reply.code(416).header("content-range", `bytes */${size}`).send();
+    }
+
+    return reply
+      .code(206)
+      .type(mime)
+      .header("accept-ranges", "bytes")
+      .header("content-range", `bytes ${start}-${end}/${size}`)
+      .header("content-length", String(end - start + 1))
+      .send(createReadStream(real, { start, end }));
   } catch {
     return reply.code(404).send({ error: "not found" });
   }
