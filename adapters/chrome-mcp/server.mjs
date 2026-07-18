@@ -258,7 +258,18 @@ const fillJs = (selector, value) => `(function(){
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
   el.blur();
-  return JSON.stringify({ ok:true, selector:${JSON.stringify(selector)}, valueNow: el.value.slice(0,300) });
+  // Compare in the page against the FULL value. valueNow is truncated for log
+  // sanity, so comparing it caller-side marks every field over 300 chars as
+  // failed even on a perfect write -- which is what kept a 3.4k-char long
+  // description looking unfillable.
+  return JSON.stringify({
+    ok: true,
+    selector: ${JSON.stringify(selector)},
+    valueNow: el.value.slice(0, 300),
+    valueLength: el.value.length,
+    matched: el.value === v,
+    truncatedByMaxLength: el.value.length < v.length
+  });
 })()`;
 
 const SUBMITTY = /\b(submit|save|confirm|send|post|publish|finish)\b/i;
@@ -326,13 +337,16 @@ async function callTool(id, name, args = {}) {
       if (typeof args.value !== "string") throw new Error("value must be a string");
       const out = await runJs(urlContains, fillJs(args.selector, args.value));
       const parsed = JSON.parse(out || "{}");
-      // React ignores naive value assignment. If valueNow doesn't match value, the
-      // write silently did not take — this is exactly the bug class to watch for.
+      // React ignores naive value assignment. `matched` is computed in the page
+      // against the full value — never re-derive it from the truncated valueNow.
       log.debug("fill_field.result", {
         selector: args.selector,
         value: args.value,
         valueNow: parsed.valueNow,
-        matched: parsed.valueNow === args.value,
+        valueLength: parsed.valueLength,
+        wroteLength: args.value.length,
+        matched: parsed.matched,
+        truncatedByMaxLength: parsed.truncatedByMaxLength,
         ok: parsed.ok,
       });
       if (!parsed.ok) throw new Error(parsed.error || "fill failed");
