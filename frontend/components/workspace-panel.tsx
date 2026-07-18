@@ -6,7 +6,7 @@
 // pulled out of the chat message parts so the middle column can stay clean.
 
 import type { UIMessage } from "ai";
-import { Camera, FilePen, Plug, ShieldCheck, Wrench } from "lucide-react";
+import { Camera, FilePen, Plug, ShieldCheck, Video, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,18 +23,34 @@ type WorkEvent =
   | { id: string; kind: "file"; status: string; paths: string[] }
   | { id: string; kind: "approval"; method: string; describe: string }
   | { id: string; kind: "mcp"; server: string; status: string }
-  | { id: string; kind: "snapshot"; name: string; src: string };
+  | { id: string; kind: "snapshot"; name: string; src: string; video: boolean };
 
+// Recordings (obs-mcp) sit alongside screenshots in the same feed.
+//
+// Deliberately NO space in the character class. OBS's default filename format
+// contains one ("2026-07-18 12-28-38.mov"), but allowing spaces here makes the
+// match greedy and ambiguous — "saved screenshot to shot.png" would match as a
+// single bogus path, and "/tmp/a.png and /tmp/b.png" would collapse into one.
+// The adapter's README instead has OBS write underscored names.
 const IMG_RE = /([/\w.\-]+\.(?:png|jpe?g|gif|webp))/gi;
+const VID_RE = /([/\w.\-]+\.(?:mp4|mov|webm|mkv))/gi;
 
-function extractImages(output: unknown): string[] {
+function matchAll(re: RegExp, s: string): string[] {
+  const found = new Set<string>();
+  let m: RegExpExecArray | null;
+  re.lastIndex = 0;
+  while ((m = re.exec(s))) found.add(m[1].trim());
+  return [...found];
+}
+
+// Returns [path, isVideo] pairs for every media file mentioned in a blob.
+function extractMedia(output: unknown): Array<[string, boolean]> {
   try {
     const s = typeof output === "string" ? output : JSON.stringify(output ?? "");
-    const found = new Set<string>();
-    let m: RegExpExecArray | null;
-    IMG_RE.lastIndex = 0;
-    while ((m = IMG_RE.exec(s))) found.add(m[1]);
-    return [...found];
+    return [
+      ...matchAll(IMG_RE, s).map((p) => [p, false] as [string, boolean]),
+      ...matchAll(VID_RE, s).map((p) => [p, true] as [string, boolean]),
+    ];
   } catch {
     return [];
   }
@@ -48,15 +64,16 @@ function deriveEvents(messages: UIMessage[]): WorkEvent[] {
   // `screencapture <path>` shell command, or a file-change path. Scan the given
   // blob for image paths and emit one snapshot per new full path.
   const pushSnapshots = (key: string, blob: unknown) => {
-    for (const img of extractImages(blob)) {
-      if (seenSnap.has(img)) continue;
-      seenSnap.add(img);
-      const name = img.split("/").pop() ?? img;
+    for (const [file, video] of extractMedia(blob)) {
+      if (seenSnap.has(file)) continue;
+      seenSnap.add(file);
+      const name = file.split("/").pop() ?? file;
       events.push({
-        id: `${key}-img-${img}`, // full path — basenames can repeat across dirs
+        id: `${key}-media-${file}`, // full path — basenames can repeat across dirs
         kind: "snapshot",
         name,
-        src: `/api/artifacts?path=${encodeURIComponent(img)}`,
+        src: `/api/artifacts?path=${encodeURIComponent(file)}`,
+        video,
       });
     }
   };
@@ -238,20 +255,35 @@ export function WorkspacePanel({ messages, onClose }: WorkspacePanelProps) {
                 <Artifact key={ev.id}>
                   <ArtifactHeader>
                     <div className="flex items-center gap-2">
-                      <Camera className="size-3.5 text-muted-foreground" />
+                      {ev.video ? (
+                        <Video className="size-3.5 text-muted-foreground" />
+                      ) : (
+                        <Camera className="size-3.5 text-muted-foreground" />
+                      )}
                       <ArtifactTitle>{ev.name}</ArtifactTitle>
                     </div>
                   </ArtifactHeader>
                   <ArtifactContent className={cn("p-2")}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={ev.src}
-                      alt={ev.name}
-                      className="max-h-72 w-full rounded-md border border-border object-contain"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = "none";
-                      }}
-                    />
+                    {ev.video ? (
+                      // preload="metadata" so the panel doesn't pull whole
+                      // recordings just to show a player for each one.
+                      <video
+                        src={ev.src}
+                        controls
+                        preload="metadata"
+                        className="max-h-72 w-full rounded-md border border-border bg-black object-contain"
+                      />
+                    ) : (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={ev.src}
+                        alt={ev.name}
+                        className="max-h-72 w-full rounded-md border border-border object-contain"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    )}
                   </ArtifactContent>
                 </Artifact>
               );
