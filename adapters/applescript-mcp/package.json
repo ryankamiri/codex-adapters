@@ -1,0 +1,11 @@
+{
+  "name": "applescript-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Codex Bodies stdio MCP adapter for macOS AppleScript automation",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

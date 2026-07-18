@@ -1,0 +1,7 @@
+{
+  "name": "clash-royale-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "MCP adapter for playing Clash Royale through macOS iPhone Mirroring"
+}

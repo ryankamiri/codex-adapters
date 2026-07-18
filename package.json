@@ -1,0 +1,27 @@
+{
+  "name": "codex-shi",
+  "version": "1.0.0",
+  "description": "Codex Bodies — terminal harness for driving the codex app-server",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "gen:protocol": "codex app-server generate-ts --out backend/src/codex/protocol",
+    "cli": "tsx backend/src/cli.ts",
+    "generate": "tsx backend/src/generator-cli.ts",
+    "typecheck": "tsc -p backend/tsconfig.json --noEmit",
+    "dev:backend": "tsx watch backend/src/server.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kilehsu/codex-shi.git"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "fastify": "^5.10.0"
+  }
+}
