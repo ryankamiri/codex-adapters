@@ -1,14 +1,15 @@
 "use client";
 
-// Two-pane shell:
-//   left   AppSidebar   thread history (localStorage)
-//   right  ChatShell    the conversation (text + reasoning)
-// ChatShell owns useChat and is keyed by the active thread so switching threads
+// OpenAI-style three-pane shell:
+//   left   AppSidebar        thread history (localStorage)
+//   middle ChatPane          clean conversation (text + reasoning)
+//   right  WorkspacePanel    verbose agent activity + snapshots
+// ChatWorkspace owns useChat and is keyed by the active thread so switching threads
 // swaps the whole conversation.
 
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ChatShell } from "@/components/chat-shell";
+import { ChatWorkspace } from "@/components/chat-workspace";
 import { useThreads } from "@/lib/threads";
 
 export default function Page() {
@@ -28,7 +29,7 @@ export default function Page() {
       />
       <SidebarInset className="h-dvh overflow-hidden">
         {threads.ready && active && (
-          <ChatShell
+          <ChatWorkspace
             key={active.id}
             threadId={active.id}
             title={active.title}
