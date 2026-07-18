@@ -19,6 +19,25 @@ export interface Thread {
 
 const THREADS_KEY = "codex-threads";
 const msgsKey = (id: string) => `codex-thread-msgs:${id}`;
+export const THREAD_MESSAGES_UPDATED = "codex-thread-messages-updated";
+
+export interface ImessageFeedThread {
+  id: string;
+  title: string;
+  prompt: string;
+  reply: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const threadFromFeed = (item: ImessageFeedThread, pinned?: boolean): Thread => ({
+  id: item.id,
+  title: item.title,
+  createdAt: Date.parse(item.createdAt) || Date.now(),
+  updatedAt: Date.parse(item.updatedAt) || Date.now(),
+  ...(pinned ? { pinned: true } : {}),
+});
 
 function newId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -80,31 +99,91 @@ export interface UseThreads {
   togglePin: (id: string) => void;
 }
 
-export function useThreads(): UseThreads {
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+export function useThreads(initialImessageThreads: ImessageFeedThread[] = []): UseThreads {
+  const initialThreads = initialImessageThreads.map((item) => threadFromFeed(item));
+  const [threads, setThreads] = useState<Thread[]>(initialThreads);
+  const [activeId, setActiveId] = useState<string | null>(initialThreads[0]?.id ?? null);
+  const [ready, setReady] = useState(initialThreads.length > 0);
 
   // Hydrate after mount (localStorage is client-only). Seed one empty thread on
   // first ever visit so the UI always has an active thread.
   useEffect(() => {
-    const existing = readThreads();
-    if (existing.length === 0) {
-      const seed: Thread = {
-        id: newId(),
-        title: "New chat",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      writeThreads([seed]);
-      setThreads([seed]);
-      setActiveId(seed.id);
-    } else {
-      setThreads(existing);
-      setActiveId(existing[0].id);
-    }
-    setReady(true);
-  }, []);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const existing = readThreads();
+      const byId = new Map(existing.map((thread) => [thread.id, thread]));
+      for (const item of initialImessageThreads) {
+        const previous = byId.get(item.id);
+        byId.set(item.id, threadFromFeed(item, previous?.pinned));
+      }
+      const hydrated = [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+      if (hydrated.length === 0) {
+        const seed: Thread = {
+          id: newId(),
+          title: "New chat",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        writeThreads([seed]);
+        setThreads([seed]);
+        setActiveId(seed.id);
+      } else {
+        writeThreads(hydrated);
+        setThreads(hydrated);
+        setActiveId((current) => current ?? hydrated[0].id);
+      }
+      setReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [initialImessageThreads]);
+
+  // The listener is a separate process. Subscribe to its durable backend feed
+  // so trusted texts become sidebar threads without continuous HTTP polling.
+  useEffect(() => {
+    if (!ready) return;
+    const source = new EventSource("/api/imessage/events");
+    const synchronize = (event: Event) => {
+      let payload: { threads?: ImessageFeedThread[] };
+      try {
+        payload = JSON.parse((event as MessageEvent<string>).data) as { threads?: ImessageFeedThread[] };
+      } catch {
+        return;
+      }
+      const inbound = Array.isArray(payload.threads) ? payload.threads : [];
+      if (inbound.length === 0) return;
+
+      for (const item of inbound) {
+        const generated: UIMessage[] = [
+          { id: `${item.id}:user`, role: "user", parts: [{ type: "text", text: item.prompt }] },
+          ...(item.reply
+            ? [{ id: `${item.id}:assistant`, role: "assistant" as const, parts: [{ type: "text" as const, text: item.reply }] }]
+            : []),
+        ];
+        const existing = loadMessages(item.id);
+        const byId = new Map(existing.map((message) => [message.id, message]));
+        for (const message of generated) byId.set(message.id, message);
+        saveMessages(item.id, [...byId.values()]);
+        window.dispatchEvent(new CustomEvent(THREAD_MESSAGES_UPDATED, { detail: { threadId: item.id } }));
+      }
+
+      setThreads((current) => {
+        const byId = new Map(current.map((thread) => [thread.id, thread]));
+        for (const item of inbound) {
+          const previous = byId.get(item.id);
+          byId.set(item.id, threadFromFeed(item, previous?.pinned));
+        }
+        const next = [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+        writeThreads(next);
+        return next;
+      });
+    };
+    source.addEventListener("threads", synchronize);
+    return () => {
+      source.removeEventListener("threads", synchronize);
+      source.close();
+    };
+  }, [ready]);
 
   const persist = useCallback((next: Thread[]) => {
     setThreads(next);

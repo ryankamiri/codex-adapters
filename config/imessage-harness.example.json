@@ -1,0 +1,20 @@
+{
+  "enabled": false,
+  "allowedSenders": [
+    "+15551234567"
+  ],
+  "service": "iMessage",
+  "allowedMcpServers": [
+    "applescript-mcp",
+    "messages-mcp"
+  ],
+  "allowShell": false,
+  "allowFileChanges": false,
+  "pollIntervalMs": 1000,
+  "debounceMs": 1500,
+  "maxTaskRuntimeMs": 1800000,
+  "maxReplyCharacters": 1500,
+  "maxQueuedTasks": 20,
+  "sendAcknowledgement": false,
+  "mode": "auto-send"
+}

@@ -35,8 +35,19 @@ export type UiChunk =
 // completed item that never had a "started" still produces input before output.
 export interface StreamCtx {
   started: Set<string>;
+  reasoningStarted: Set<string>;
+  reasoningWithDeltas: Set<string>;
 }
-export const newStreamCtx = (): StreamCtx => ({ started: new Set() });
+export const newStreamCtx = (): StreamCtx => ({
+  started: new Set(),
+  reasoningStarted: new Set(),
+  reasoningWithDeltas: new Set(),
+});
+
+function completedReasoningText(item: { summary?: unknown; content?: unknown }): string {
+  const parts = [...(Array.isArray(item.summary) ? item.summary : []), ...(Array.isArray(item.content) ? item.content : [])];
+  return parts.filter((part): part is string => typeof part === "string" && part.length > 0).join("\n\n");
+}
 
 // Replace inline base64 image data in an MCP tool result with a tiny placeholder.
 //
@@ -81,8 +92,28 @@ export function codexEventToChunks(e: AgentEvent, ctx: StreamCtx): UiChunk[] {
 
       if (e.itemType === "reasoning") {
         const id = String(it.id ?? `r-${e.seq}`);
-        if (e.phase === "started") return [{ type: "reasoning-start", id }];
-        if (e.phase === "completed") return [{ type: "reasoning-end", id }];
+        if (e.phase === "started") {
+          if (ctx.reasoningStarted.has(id)) return [];
+          ctx.reasoningStarted.add(id);
+          return [{ type: "reasoning-start", id }];
+        }
+        if (e.phase === "completed") {
+          const out: UiChunk[] = [];
+          if (!ctx.reasoningStarted.has(id)) {
+            ctx.reasoningStarted.add(id);
+            out.push({ type: "reasoning-start", id });
+          }
+          // Some app-server versions deliver only the completed item, with no
+          // reasoning delta notifications. Preserve its full text as a fallback.
+          // If any delta was already forwarded for this item, the completed
+          // arrays contain the same accumulated text and must not be emitted again.
+          if (!ctx.reasoningWithDeltas.has(id)) {
+            const delta = completedReasoningText(it);
+            if (delta) out.push({ type: "reasoning-delta", id, delta });
+          }
+          out.push({ type: "reasoning-end", id });
+          return out;
+        }
         return [];
       }
 
@@ -138,8 +169,16 @@ export function codexEventToChunks(e: AgentEvent, ctx: StreamCtx): UiChunk[] {
       const delta = String(p?.delta ?? p?.text ?? "");
       if (!id || !delta) return [];
       if (e.method === "item/agentMessage/delta") return [{ type: "text-delta", id, delta }];
-      if (e.method === "item/reasoning/textDelta" || e.method === "item/reasoning/summaryTextDelta")
-        return [{ type: "reasoning-delta", id, delta }];
+      if (e.method === "item/reasoning/textDelta" || e.method === "item/reasoning/summaryTextDelta") {
+        const out: UiChunk[] = [];
+        if (!ctx.reasoningStarted.has(id)) {
+          ctx.reasoningStarted.add(id);
+          out.push({ type: "reasoning-start", id });
+        }
+        ctx.reasoningWithDeltas.add(id);
+        out.push({ type: "reasoning-delta", id, delta });
+        return out;
+      }
       return [];
     }
 

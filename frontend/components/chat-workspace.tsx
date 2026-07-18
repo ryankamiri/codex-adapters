@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import type { UIMessage } from "ai";
 import { PanelRight, RefreshCw } from "lucide-react";
 import {
   ResizablePanelGroup,
@@ -20,16 +21,17 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { ChatPane } from "./chat-pane";
 import { WorkspacePanel } from "./workspace-panel";
-import { loadMessages, saveMessages } from "@/lib/threads";
+import { loadMessages, saveMessages, THREAD_MESSAGES_UPDATED } from "@/lib/threads";
 import { useModelPicker } from "@/lib/models";
 
 interface ChatWorkspaceProps {
   threadId: string;
   title: string;
+  initialMessages?: UIMessage[];
   onTitle: (title: string) => void;
 }
 
-export function ChatWorkspace({ threadId, title, onTitle }: ChatWorkspaceProps) {
+export function ChatWorkspace({ threadId, title, initialMessages, onTitle }: ChatWorkspaceProps) {
   const [showWorkspace, setShowWorkspace] = useState(true);
   const { models, model, setModel } = useModelPicker();
 
@@ -43,6 +45,8 @@ export function ChatWorkspace({ threadId, title, onTitle }: ChatWorkspaceProps) 
   // minecraft scan_surroundings is a large JSON blob) it grew past Fastify's body
   // limit and the request started failing with HTTP 413.
   const { messages, sendMessage, status, stop, setMessages } = useChat({
+    id: threadId,
+    messages: initialMessages,
     transport: new DefaultChatTransport({
       api: "/api/chat",
       body: { threadId },
@@ -69,6 +73,17 @@ export function ChatWorkspace({ threadId, title, onTitle }: ChatWorkspaceProps) 
     if (stored.length) setMessages(stored);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
+
+  useEffect(() => {
+    const synchronize = (event: Event) => {
+      const detail = (event as CustomEvent<{ threadId?: string }>).detail;
+      if (detail?.threadId !== threadId) return;
+      const stored = loadMessages(threadId);
+      if (stored.length) setMessages(stored);
+    };
+    window.addEventListener(THREAD_MESSAGES_UPDATED, synchronize);
+    return () => window.removeEventListener(THREAD_MESSAGES_UPDATED, synchronize);
+  }, [threadId, setMessages]);
 
   // Persist on change. Guarded so the initial empty render never clobbers storage.
   useEffect(() => {

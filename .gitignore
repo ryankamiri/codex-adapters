@@ -5,6 +5,7 @@ node_modules/
 # env / secrets
 .env
 .env.*
+config/imessage-harness.json
 
 # test artifacts, journals, generated run data
 data/

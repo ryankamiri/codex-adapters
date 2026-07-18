@@ -19,6 +19,7 @@ import type { AskForApproval } from "./protocol/v2/AskForApproval";
 import type { UserInput } from "./protocol/v2/UserInput";
 import type { Model } from "./protocol/v2/Model";
 import type { InitializeResponse } from "./protocol/InitializeResponse";
+import type { ReasoningSummary } from "./protocol/ReasoningSummary";
 
 export type { ThreadItem, TurnStatus, TurnError, McpServerStatus, Model, InitializeResponse, UserInput };
 
@@ -63,6 +64,7 @@ export interface TurnOptions {
   writableRoots?: string[]; // when set, sent as a workspace-write sandboxPolicy for this turn
   approvalPolicy?: AskForApproval;
   model?: string;
+  summary?: ReasoningSummary; // defaults to "auto" so completed reasoning summaries are available
 }
 
 export interface TurnResult {

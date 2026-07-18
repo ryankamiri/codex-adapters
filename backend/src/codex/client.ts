@@ -63,6 +63,30 @@ export interface ClientOptions {
 const normInput = (input: string | UserInput[]): UserInput[] =>
   typeof input === "string" ? [{ type: "text", text: input, text_elements: [] }] : input;
 
+export const buildTurnStartParams = (
+  threadId: string,
+  input: string | UserInput[],
+  opts?: TurnOptions,
+): Record<string, unknown> => {
+  const params: Record<string, unknown> = {
+    threadId,
+    input: normInput(input),
+    summary: opts?.summary ?? "auto",
+  };
+  if (opts?.model) params.model = opts.model;
+  if (opts?.approvalPolicy) params.approvalPolicy = opts.approvalPolicy;
+  if (opts?.writableRoots) {
+    params.sandboxPolicy = {
+      type: "workspaceWrite",
+      writableRoots: opts.writableRoots,
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    };
+  }
+  return params;
+};
+
 export class AppServerClient implements CodexClient {
   private transport?: Transport;
   private nextId = 0;
@@ -211,18 +235,7 @@ export class AppServerClient implements CodexClient {
 
     void (async () => {
       try {
-        const params: Record<string, unknown> = { threadId, input: normInput(input) };
-        if (opts?.model) params.model = opts.model;
-        if (opts?.approvalPolicy) params.approvalPolicy = opts.approvalPolicy;
-        if (opts?.writableRoots) {
-          params.sandboxPolicy = {
-            type: "workspaceWrite",
-            writableRoots: opts.writableRoots,
-            networkAccess: false,
-            excludeTmpdirEnvVar: false,
-            excludeSlashTmp: false,
-          };
-        }
+        const params = buildTurnStartParams(threadId, input, opts);
         const result = await this.request("turn/start", params);
         const tid: string = result.turn.id; // id at result.turn.id
         myTurnId = tid;

@@ -395,6 +395,10 @@ const TOOLS = [
 
 // ── tool dispatch ─────────────────────────────────────────────────────────────
 async function callTool(id, name, args = {}) {
+  const tool = TOOLS.some((candidate) => candidate.name === name) ? name : "<unknown>";
+  const startedAt = Date.now();
+  let status = "completed";
+  console.error(`[minecraft-mcp] ${JSON.stringify({ event: "tool_call_started", tool })}`);
   try {
     switch (name) {
       case "observe_world": {
@@ -653,7 +657,21 @@ async function callTool(id, name, args = {}) {
         return errResult(id, `unknown tool: ${name}`);
     }
   } catch (e) {
+    status = "failed";
+    console.error(`[minecraft-mcp] ${JSON.stringify({
+      event: "tool_call_failed",
+      tool,
+      errorType: e?.name || "Error",
+      ...(typeof e?.code === "string" || typeof e?.code === "number" ? { errorCode: e.code } : {}),
+    })}`);
     return errResult(id, `${name || "tool"} failed: ${e?.message ?? e}`);
+  } finally {
+    console.error(`[minecraft-mcp] ${JSON.stringify({
+      event: "tool_call_finished",
+      tool,
+      status,
+      durationMs: Date.now() - startedAt,
+    })}`);
   }
 }
 
