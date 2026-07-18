@@ -1,0 +1,11 @@
+{
+  "name": "messages-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A constrained stdio MCP server for macOS Messages",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

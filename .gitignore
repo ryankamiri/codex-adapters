@@ -1,3 +1,26 @@
+
+# dependencies
+node_modules/
+
+# env / secrets
+.env
+.env.*
+
+# test artifacts, journals, generated run data
+data/
+
+# generated codex protocol bindings — regenerate with `npm run gen:protocol`
+backend/src/codex/protocol/
+
+# editor / OS cruft
+.obsidian/
+.vscode/
+.idea/
+.DS_Store
+*.log
+.obsidian
+.agents
+.claude
 .agents
 .claude
 skills-lock.json
