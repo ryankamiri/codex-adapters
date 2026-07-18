@@ -1,0 +1,12 @@
+{
+  "name": "app-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP adapter for <app> (Codex Bodies). Rename to <app>-mcp.",
+  "bin": { "app-mcp": "server.mjs" },
+  "scripts": {
+    "smoke": "printf '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}\\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}\\n' | node server.mjs"
+  },
+  "dependencies": {}
+}
