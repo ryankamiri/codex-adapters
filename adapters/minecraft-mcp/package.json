@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Codex Bodies adapter: an MCP server that gives Codex hands + eyes in Minecraft (mineflayer bot, screencapture snapshots, schematic capture).",
+  "description": "Relay adapter: an MCP server that gives Codex hands + eyes in Minecraft (mineflayer bot, screencapture snapshots, schematic capture).",
   "main": "server.mjs",
   "bin": {
     "minecraft-mcp": "server.mjs"

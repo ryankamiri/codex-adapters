@@ -1,6 +1,6 @@
 # minecraft-mcp
 
-A Codex Bodies adapter that gives Codex **hands and eyes in Minecraft**: a
+A Relay adapter that gives Codex **hands and eyes in Minecraft**: a
 mineflayer bot plays survival, macOS `screencapture` grabs progress screenshots
 of the game you're spectating, and prismarine-schematic exports the build as JSON
 for hand-off to other apps (Blender).

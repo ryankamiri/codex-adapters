@@ -1,6 +1,6 @@
-# Codex Bodies — Hackathon Plan (Ramp)
+# Relay — Hackathon Plan (Ramp)
 
-Repo: `~/codex-shi` (currently empty — greenfield). Working name "Codex Bodies"; rename freely.
+Repo: `~/codex-shi` (currently empty — greenfield). Working name "Relay"; rename freely.
 
 ## 1. Context & Positioning
 

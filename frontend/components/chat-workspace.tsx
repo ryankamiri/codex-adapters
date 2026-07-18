@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { PanelRight, RefreshCw } from "lucide-react";
+import { PanelRight } from "lucide-react";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -18,7 +18,6 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Spinner } from "@/components/ui/spinner";
 import { ChatPane } from "./chat-pane";
 import { WorkspacePanel } from "./workspace-panel";
 import { loadMessages, saveMessages, THREAD_MESSAGES_UPDATED } from "@/lib/threads";
@@ -108,21 +107,6 @@ export function ChatWorkspace({ threadId, title, initialMessages, onTitle }: Cha
     }).catch(() => {});
   };
 
-  const [mcpLoading, setMcpLoading] = useState(false);
-  const [mcpCount, setMcpCount] = useState<number | null>(null);
-  const reloadMcp = async () => {
-    setMcpLoading(true);
-    try {
-      const res = await fetch("/api/mcp/reload", { method: "POST" });
-      const data = await res.json();
-      setMcpCount(Array.isArray(data.servers) ? data.servers.length : null);
-    } catch {
-      /* ignore */
-    } finally {
-      setMcpLoading(false);
-    }
-  };
-
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2">
@@ -130,16 +114,6 @@ export function ChatWorkspace({ threadId, title, initialMessages, onTitle }: Cha
         <Separator orientation="vertical" className="mr-1 h-5" />
         <span className="truncate text-sm font-medium">{title}</span>
         <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={reloadMcp}
-            disabled={mcpLoading}
-            title="Reload MCP servers (pick up newly added adapters without restarting)"
-          >
-            {mcpLoading ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
-            {mcpCount !== null ? `${mcpCount} MCP` : "Reload MCP"}
-          </Button>
           {!showWorkspace && (
             <Button
               variant="ghost"

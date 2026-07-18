@@ -1,7 +1,7 @@
 {
-  "name": "codex-shi",
+  "name": "relay",
   "version": "1.0.0",
-  "description": "Codex Bodies — terminal harness for driving the codex app-server",
+  "description": "Relay — terminal harness for driving the codex app-server",
   "type": "module",
   "private": true,
   "scripts": {
@@ -20,7 +20,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kilehsu/codex-shi.git"
+    "url": "git+https://github.com/ryankamiri/codex-adapters.git"
   },
   "license": "ISC",
   "devDependencies": {

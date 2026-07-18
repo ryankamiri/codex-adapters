@@ -151,7 +151,7 @@ export class AppServerClient implements CodexClient {
     const capabilities: Record<string, unknown> = { experimentalApi: false, requestAttestation: false };
     if (!this.includeDeltas) capabilities.optOutNotificationMethods = DELTA_METHODS; // suppress deltas at the source
     const info: InitializeResponse = await this.request("initialize", {
-      clientInfo: { name: "codex-bodies", title: "Codex Bodies", version: "0.1.0" },
+      clientInfo: { name: "relay", title: "Relay", version: "0.1.0" },
       capabilities,
     });
     this.transport.send({ method: "initialized" });

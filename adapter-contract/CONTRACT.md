@@ -1,6 +1,6 @@
 # Adapter Contract
 
-The **framework interface** every Codex Bodies adapter conforms to. An adapter is a
+The **framework interface** every Relay adapter conforms to. An adapter is a
 small program that turns a live desktop app (Minecraft, Blender, a browser, macOS via
 AppleScript, …) into a set of tools a Codex agent can call. This document is the
 single source of truth: the **generator** embeds it when it authors a new adapter, and

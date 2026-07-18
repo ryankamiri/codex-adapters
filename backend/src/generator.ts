@@ -123,7 +123,7 @@ export async function generateAdapter(opts: GenerateOptions): Promise<GenerateRe
 
   // ── turn A: propose ──
   const promptA = [
-    `You are generating a **Codex Bodies adapter** — a stdio MCP server that lets an agent drive a live application (${appName}).`,
+    `You are generating a **Relay adapter** — a stdio MCP server that lets an agent drive a live application (${appName}).`,
     ``,
     `## The contract you MUST follow`,
     contract,

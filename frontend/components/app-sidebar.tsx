@@ -14,7 +14,6 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,7 +24,6 @@ import {
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -121,7 +119,7 @@ export function AppSidebar({
                 <Hexagon className="size-4" />
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold">Codex Bodies</span>
+                <span className="font-semibold">Relay</span>
                 <span className="text-xs text-muted-foreground">Agent workspace</span>
               </div>
             </SidebarMenuButton>
@@ -176,22 +174,6 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg">
-              <Avatar className="size-8 rounded-lg">
-                <AvatarFallback className="rounded-lg">AB</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-medium">Aadi Biyani</span>
-                <span className="text-xs text-muted-foreground">aadibiyani5@gmail.com</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
     </Sidebar>
   );
 }

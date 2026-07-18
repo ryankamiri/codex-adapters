@@ -1,4 +1,4 @@
-# Codex Bodies — Terminal Harness: Setup & Test Guide
+# Relay — Terminal Harness: Setup & Test Guide
 
 This harness drives a **`codex app-server`** child process over JSON-RPC and lets you
 talk to the agent from your terminal. You type a prompt on stdin; it runs a Codex turn

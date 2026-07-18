@@ -1,6 +1,6 @@
 # obs-mcp
 
-Codex Bodies adapter for **OBS Studio**. Switch scenes, roll recordings, and pull frames
+Relay adapter for **OBS Studio**. Switch scenes, roll recordings, and pull frames
 back as artifacts — over [obs-websocket](https://github.com/obsproject/obs-websocket) v5
 via [`obs-websocket-js`](https://github.com/obs-websocket-community-projects/obs-websocket-js).
 

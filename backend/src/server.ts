@@ -278,19 +278,37 @@ app.get("/api/models", async (req, reply) => {
   });
 });
 
+// Shape MCP server status for the workspace "Servers" tab.
+//
+// NOTE `tools` is a RECORD keyed by tool name ({ [name]: Tool }), not an array —
+// see McpServerStatus in codex/protocol/v2. An earlier Array.isArray() check here
+// therefore always fell through and reported the count as undefined.
+//
+// There is no explicit health field on the status, so readiness is derived: a
+// server that failed to start initializes no tools. Live "starting/ready/failed"
+// transitions arrive separately as mcp events on the chat stream.
+function describeMcpServers(servers: any[]) {
+  return servers.map((s) => ({
+    name: s.name ?? "",
+    title: s.serverInfo?.title ?? s.serverInfo?.name ?? null,
+    tools: Object.values(s.tools ?? {})
+      .filter(Boolean)
+      .map((t: any) => ({ name: String(t.name ?? ""), description: t.description ?? t.title ?? "" }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  }));
+}
+
+// Registered MCP servers and the tools each one exposes.
+app.get("/api/mcp/servers", async (_req, reply) => {
+  const { client } = await getChatRuntime();
+  return reply.send({ servers: describeMcpServers(await client.listMcpServers()) });
+});
+
 // Hot-reload MCP config so newly-added servers appear without restarting the app.
 app.post("/api/mcp/reload", async (_req, reply) => {
   const { client } = await getChatRuntime();
   await client.reloadMcpConfig();
-  const servers = await client.listMcpServers();
-  return reply.send({
-    ok: true,
-    servers: servers.map((s: any) => ({
-      name: s.name ?? s.server ?? "",
-      status: s.status ?? "",
-      tools: Array.isArray(s.tools) ? s.tools.length : undefined,
-    })),
-  });
+  return reply.send({ ok: true, servers: describeMcpServers(await client.listMcpServers()) });
 });
 
 const port = Number(process.env.PORT ?? 4000);

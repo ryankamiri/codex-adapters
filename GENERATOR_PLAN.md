@@ -2,7 +2,7 @@
 
 ## Context
 
-Codex Bodies turns live desktop apps into environments Codex can drive, and its
+Relay turns live desktop apps into environments Codex can drive, and its
 wedge vs OpenAI's `@plugin-creator` is that **we generate and run the adapter code
 itself** (the MCP server that drives a live app), not just package an existing one.
 Two pieces make that real and don't exist yet:
