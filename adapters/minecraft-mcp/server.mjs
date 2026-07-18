@@ -28,7 +28,7 @@ import {
 import { buildHouse } from "./src/house.js";
 import { duelPlayer, KITS } from "./src/duel.js";
 import { captureStructure } from "./src/structure.js";
-import { initSnapshotter, takeSnapshot, closeSnapshotter } from "./src/snapshot.js";
+import { takeSnapshot } from "./src/snapshot.js";
 
 const { goals } = pathfinderPkg;
 const Vec3 = vec3Pkg.Vec3;
@@ -75,17 +75,9 @@ const botSpawned = ready
     console.error("[minecraft-mcp] bot failed to connect:", e?.message ?? e);
   });
 
-// Agent-POV camera: point headless Chromium at the viewer once the bot is up.
-// Non-fatal — takeSnapshot falls back to screencapture if this never readies.
-const snapReady = botSpawned.then(async () => {
-  if (!bot) return;
-  try {
-    await initSnapshotter(config.viewerPort);
-    console.error(`[minecraft-mcp] agent-POV snapshotter ready (viewer :${config.viewerPort})`);
-  } catch (e) {
-    console.error("[minecraft-mcp] snapshotter init failed — snapshots fall back to screencapture:", e?.message ?? e);
-  }
-});
+// Snapshots are plain `screencapture` of the real screen — no browser to warm
+// up, nothing to initialise. See src/snapshot.js for why the headless-Chromium
+// agent-POV renderer was dropped.
 
 const timeout = (ms, msg) => new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms));
 
@@ -623,7 +615,6 @@ async function callTool(id, name, args = {}) {
 
       case "capture_snapshot": {
         const label = args.label === undefined ? "progress" : str(args.label, "label");
-        await snapReady.catch(() => {}); // wait through camera warm-up; fallback covers failure
         const art = await takeSnapshot(config.artifactsDir, label);
         return okContent(id, [
           { type: "text", text: `snapshot saved (${art.source === "agent-pov" ? "agent's POV" : "screen capture"}): ${art.path}` },
@@ -670,6 +661,7 @@ async function callTool(id, name, args = {}) {
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   if (!line.trim()) return;
+  lastActivity = Date.now(); // feeds the idle-exit watchdog below
   let msg;
   try {
     msg = JSON.parse(line);
@@ -709,9 +701,9 @@ async function shutdown(why) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.error(`[minecraft-mcp] shutting down (${why})`);
-  try {
-    await closeSnapshotter();
-  } catch {}
+  // Hard deadline so cleanup can never wedge the process. A shutdown that
+  // hangs leaves an orphan alive holding a bot session — observed in practice.
+  setTimeout(() => process.exit(0), 5000).unref();
   try {
     bot?.quit();
   } catch {}
@@ -720,5 +712,22 @@ async function shutdown(why) {
 rl.on("close", () => shutdown("stdin closed")); // parent (app-server) died → EOF
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+// The Codex app-server spawns a FRESH set of adapters per turn and does not stop
+// the previous set. That is expensive here specifically: every superseded
+// instance keeps a headless Chromium (~430 MB) AND a second bot logged into the
+// Minecraft server. A superseded instance never gets another tools/call, so idle
+// time is the signal we've been replaced. Also exit if reparented to init
+// (ppid 1), which means the parent died without our stdin reaching EOF.
+const IDLE_EXIT_MS = Number(process.env.MCP_IDLE_EXIT_MS ?? 15 * 60_000);
+let lastActivity = Date.now();
+if (IDLE_EXIT_MS > 0) {
+  setInterval(() => {
+    if (process.ppid === 1) return shutdown("orphaned (parent died)");
+    if (Date.now() - lastActivity > IDLE_EXIT_MS) {
+      shutdown(`idle ${Math.round(IDLE_EXIT_MS / 60_000)}m — superseded by a newer instance`);
+    }
+  }, 30_000).unref();
+}
 
 console.error("[minecraft-mcp] MCP server ready on stdio");
