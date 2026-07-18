@@ -5,6 +5,7 @@
 // approvals, MCP status) plus any snapshot artifacts the tools produce. These are
 // pulled out of the chat message parts so the middle column can stay clean.
 
+import { useMemo } from "react";
 import type { UIMessage } from "ai";
 import { Camera, FilePen, Plug, ShieldCheck, Video, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -151,7 +152,10 @@ interface WorkspacePanelProps {
 }
 
 export function WorkspacePanel({ messages, onClose }: WorkspacePanelProps) {
-  const events = deriveEvents(messages);
+  // Memoized because this walks every part of every message and regex-scans each
+  // tool output. Unmemoized it re-ran on every render — i.e. on every streaming
+  // token delta — which is far more work than the panel's own re-render.
+  const events = useMemo(() => deriveEvents(messages), [messages]);
 
   return (
     <div className="flex h-full flex-col bg-background">

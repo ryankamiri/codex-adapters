@@ -38,6 +38,33 @@ export interface StreamCtx {
 }
 export const newStreamCtx = (): StreamCtx => ({ started: new Set() });
 
+// Replace inline base64 image data in an MCP tool result with a tiny placeholder.
+//
+// Vision-capable adapters return a screenshot BOTH as a file path and inline as
+// base64 (see minecraft-mcp's capture_snapshot). The model needs the inline copy,
+// but it reaches the model through codex — the browser never does anything with
+// it, because the workspace panel renders the picture from the file path instead.
+//
+// Left in, a single ~800 KB screenshot becomes ~1.1 MB of base64 that then gets
+// JSON.stringify'd on every token delta (once to persist the transcript, once in
+// deriveEvents, once more to feed a syntax highlighter). Three copies of megabyte
+// strings per delta is what locks the main thread, so it is stripped at the
+// boundary — the last point where we still know it is an image.
+function stripInlineImages(result: unknown): unknown {
+  const content = (result as any)?.content;
+  if (!Array.isArray(content)) return result;
+
+  let stripped = false;
+  const next = content.map((block: any) => {
+    if (block?.type !== "image" || typeof block?.data !== "string") return block;
+    stripped = true;
+    const kb = Math.round((block.data.length * 3) / 4 / 1024);
+    return { type: "text", text: `[image omitted from transcript — ${kb} KB ${block.mimeType ?? "image"}; rendered from the saved artifact path above]` };
+  });
+
+  return stripped ? { ...(result as object), content: next } : result;
+}
+
 export function codexEventToChunks(e: AgentEvent, ctx: StreamCtx): UiChunk[] {
   switch (e.kind) {
     case "item": {
@@ -74,7 +101,7 @@ export function codexEventToChunks(e: AgentEvent, ctx: StreamCtx): UiChunk[] {
         } else if (e.phase === "completed") {
           ensureInput();
           if (it.error) out.push({ type: "tool-output-error", toolCallId, errorText: String(it.error?.message ?? it.error) });
-          else out.push({ type: "tool-output-available", toolCallId, output: it.result ?? {} });
+          else out.push({ type: "tool-output-available", toolCallId, output: stripInlineImages(it.result ?? {}) });
         }
         return out;
       }
