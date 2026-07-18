@@ -7,6 +7,8 @@
 import { useEffect, useMemo } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 import { ChatPane } from "./chat-pane";
 import { loadMessages, saveMessages } from "@/lib/threads";
 import { useModelPicker } from "@/lib/models";
@@ -66,15 +68,23 @@ export function ChatShell({ threadId, title, onTitle }: ChatShellProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <ChatPane
-        messages={uiMessages}
-        status={status}
-        onSend={onSend}
-        onStop={onStop}
-        models={models}
-        model={model}
-        setModel={setModel}
-      />
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2">
+        <SidebarTrigger />
+        <Separator orientation="vertical" className="mr-1 h-5" />
+        <span className="truncate text-sm font-medium">{title}</span>
+      </header>
+      {/* ChatPane is h-full, so it needs a bounded flex child to size against. */}
+      <div className="min-h-0 flex-1">
+        <ChatPane
+          messages={uiMessages}
+          status={status}
+          onSend={onSend}
+          onStop={onStop}
+          models={models}
+          model={model}
+          setModel={setModel}
+        />
+      </div>
     </div>
   );
 }
