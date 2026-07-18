@@ -24,3 +24,4 @@ backend/src/codex/protocol/
 .agents
 .claude
 skills-lock.json
+package-lock.json

@@ -14,7 +14,12 @@ import { getChatRuntime, getThreadForClient, runExclusive } from "./codex-runtim
 import { codexEventToChunks, newStreamCtx, type UiChunk } from "./codex/ui-stream";
 import type { TurnHandle } from "./codex/contract";
 
-const app = Fastify({ logger: true });
+// Fastify's default bodyLimit is 1 MiB, which a single chat request can exceed
+// (a pasted blob or an image attachment) — the client then sees an opaque HTTP
+// 413. The frontend already sends only the latest user message rather than the
+// whole transcript, so this is just headroom for one large message. Safe to be
+// generous: the server binds to 127.0.0.1 only.
+const app = Fastify({ logger: true, bodyLimit: 32 * 1024 * 1024 });
 
 // The in-flight turn per UI thread, so POST /api/interrupt (or a client disconnect)
 // can stop it mid-stream via turn/interrupt.

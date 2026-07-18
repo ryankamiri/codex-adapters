@@ -35,8 +35,24 @@ export function ChatWorkspace({ threadId, title, onTitle }: ChatWorkspaceProps) 
 
   // threadId is baked into the transport body (this component is keyed by threadId
   // upstream, so it never goes stale) — the backend routes the turn to that thread.
+  //
+  // Send ONLY the latest user message, not the whole transcript. Codex holds the
+  // conversation server-side on the thread, and the backend reads just the last
+  // user message (see latestUserText in backend/src/server.ts) — so uploading the
+  // full history every turn was pure waste, and with verbose tool output (a single
+  // minecraft scan_surroundings is a large JSON blob) it grew past Fastify's body
+  // limit and the request started failing with HTTP 413.
   const { messages, sendMessage, status, stop, setMessages } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat", body: { threadId } }),
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      body: { threadId },
+      // `body` here is already the transport body merged with the per-call body,
+      // so spreading it keeps both threadId and the model picker's selection.
+      prepareSendMessagesRequest: ({ messages: msgs, body }) => {
+        const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+        return { body: { ...body, messages: lastUser ? [lastUser] : [] } };
+      },
+    }),
   });
 
   // De-duplicate by message id (last wins). Guards against a rare duplicate slipping
