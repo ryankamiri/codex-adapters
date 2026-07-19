@@ -2,56 +2,137 @@
 
 **Codex can reason about any app on your Mac. It can't touch a single one.**
 
-Anything without a public API — a game, a native macOS app, an internal desktop
-tool — is invisible to an agent. The usual fix is to write an integration per app,
-by hand, forever. Most apps never get one.
+Anything without a public API — a game, a native macOS app, an internal tool your
+company wrote in 2009 — is invisible to an agent. The usual fix is to write an
+integration per app, by hand, forever. Most apps never get one.
 
-Relay gives Codex hands. Point it at an application and it generates a local **MCP
-adapter**: a small stdio server that turns that app into tools the agent can call.
-Screen in, clicks out. No API, no plugin, no vendor cooperation, and nothing leaves
-the laptop.
+Relay removes the "by hand." You describe an app you want your agent to drive, and
+Relay writes the adapter for it, tests it, and registers it — **on your machine, for
+your apps, in a couple of minutes.** Screen in, clicks out. No API, no plugin, no
+vendor cooperation, nothing leaving the laptop.
+
+The seven adapters in this repo aren't the product. They're the evidence that the
+approach holds.
 
 > Built at the Ramp Builders Cup. The submission form was filled out by
-> `chrome-mcp`, one of the adapters in this repo — which then refused to click
-> Submit, because that part is a human's job.
+> `chrome-mcp`, one of the adapters in here — which then refused to click Submit,
+> because that part is a human's job.
 
 ---
 
-## What it looks like
+## Make an adapter for your own app
 
-```mermaid
-flowchart LR
-    U[You] --> C[Codex app-server]
-    C -->|MCP over stdio| A1[minecraft-mcp]
-    C -->|MCP over stdio| A2[chrome-mcp]
-    C -->|MCP over stdio| A3[messages-mcp]
-    C -->|MCP over stdio| A4[applescript-mcp]
-    A1 --> M[Minecraft]
-    A2 --> B[Chrome]
-    A3 --> I[Messages]
-    A4 --> O[Any macOS app]
-```
-
-A Fastify backend drives `codex app-server` over newline-delimited JSON-RPC and
-streams turns to a Next.js workspace UI as Server-Sent Events. Each adapter is an
-independent child process speaking MCP on stdio.
-
----
-
-## Quickstart
-
-**Prerequisites:** macOS, Node 20+, and the `codex` CLI on your `PATH`.
+This is the actual quickstart. Pick something on your machine that no agent can
+currently touch.
 
 ```bash
 git clone https://github.com/ryankamiri/codex-adapters
-cd codex-adapters
-npm install
+cd codex-adapters && npm install
 
-npm run dev:backend          # Fastify + codex app-server on :4000
-cd frontend && npm install && npm run dev   # workspace UI on :3000
+npm run generate -- new spotify --intent "control Spotify: play, pause, skip, search, read what's playing"
 ```
 
-Register the adapters you want in `~/.codex/config.toml`:
+That's it. Codex reads the adapter contract, proposes a toolkit, writes
+`adapters/spotify-mcp/server.mjs`, smoke-tests it, and registers it in your
+`~/.codex/config.toml`. Your agent can now drive Spotify.
+
+Useful flags:
+
+```bash
+# Approve the tool surface before a line of code is written.
+npm run generate -- new blender --intent "import a mesh, render a frame" --review
+
+# Feed it the app's own docs — an AppleScript dictionary, an API reference, notes.
+# Defaults to data/sources/<app>/ if it exists.
+npm run generate -- new logic-pro --intent "..." --sources ~/docs/logic-scripting
+```
+
+### How it decides what to build
+
+```mermaid
+flowchart TD
+    I["Your intent: 'drive Spotify'"] --> A
+    C["adapter-contract/CONTRACT.md"] --> A
+    D["Your local docs (optional)"] --> A
+    A["Turn A — propose a toolkit<br/>read-only"] --> R{--review?}
+    R -->|yes| E["You edit toolkit.json"] --> B
+    R -->|no| B["Turn B — write server.mjs<br/>writable"]
+    B --> S{Smoke test}
+    S -->|fails| X["Not registered.<br/>Never reaches your agent."]
+    S -->|passes| G["Registered in ~/.codex/config.toml"]
+    G --> Y["Your agent can drive the app"]
+```
+
+Both turns run on **one persistent thread**, so the implementation still remembers
+why it proposed each tool. The contract is embedded in the generator's own prompt,
+which is why generated adapters and hand-written ones come out the same shape.
+
+**A generated adapter that fails its smoke test is never registered.** Broken code
+doesn't reach your agent.
+
+---
+
+## Why any app fits
+
+Every adapter implements the same triad, defined in
+[`adapter-contract/CONTRACT.md`](adapter-contract/CONTRACT.md):
+
+1. **`observe_*`** — cheap, read-only state. Safe to call anytime, no side effects.
+2. **action tools** — verbs that change the app, named for what they do.
+3. **`capture_*`** — writes a file under `ARTIFACTS_DIR` and returns its path.
+
+The triad is deliberately vague about *how* you reach the app, and that's the whole
+trick. Observing might be a network query, an accessibility tree, or a screenshot.
+Acting might be a protocol message, an AppleScript event, or a synthetic click. The
+agent doesn't care — it sees tools either way.
+
+That third one matters more than it looks. **Artifacts are how apps hand off to each
+other**: Minecraft exports a build as a JSON schematic, and the next adapter reads
+it. Apps become composable instead of isolated.
+
+Two rules that aren't negotiable:
+
+- **stdout is protocol-only.** One stray byte kills the transport. Diagnostics go to
+  stderr.
+- **Adapters return errors, they don't throw.** A crashed adapter fails the whole turn.
+
+---
+
+## Proof it generalizes
+
+Seven adapters, and the point is the right-hand column — four fundamentally
+different ways of reaching an app, one contract, one agent interface.
+
+| Adapter | Tools | How it reaches the app |
+| --- | --: | --- |
+| [`minecraft-mcp`](adapters/minecraft-mcp) | 28 | **Network protocol.** A mineflayer bot plays real survival — gather, craft, smelt, fight, build. First-person POV rendered headless and returned to the model *as vision*. No `/give`, no cheats. |
+| [`clash-royale-mcp`](adapters/clash-royale-mcp) | 9 | **Synthetic input on a mirrored screen.** Card deploys go through a compiled Swift mouse driver, because AppleScript clicks weren't pixel-accurate enough to land a troop on a tile. |
+| [`imessage-listener-mcp`](adapters/imessage-listener-mcp) | 7 | **A managed local service.** Start, stop, and control trusted senders for the iMessage→Codex listener — without handing the agent shell access. |
+| [`messages-mcp`](adapters/messages-mcp) | 6 | **AppleScript + SQLite.** Sends iMessages to any number or contact; reads history straight out of `chat.db`. |
+| [`chrome-mcp`](adapters/chrome-mcp) | 5 | **Injected JavaScript.** Reads and fills web forms in a live tab. Refuses submit-like controls unless explicitly opted in. |
+| [`obs-mcp`](adapters/obs-mcp) | 5 | **App scripting.** Scene switching and recording control. |
+| [`applescript-mcp`](adapters/applescript-mcp) | 3 | **The escape hatch.** Arbitrary AppleScript, screenshots, frontmost-app state — so an app with no purpose-built adapter still has a path today. |
+
+If your app is reachable by *any* of those mechanisms — and on macOS almost
+everything is — it can be an adapter.
+
+---
+
+## Running the workspace
+
+The generator alone needs nothing but the `codex` CLI. To watch your agent drive
+apps in a UI:
+
+```bash
+npm run dev:backend                          # Fastify + codex app-server on :4000
+cd frontend && npm install && npm run dev    # workspace UI on :3000
+```
+
+A Fastify backend drives `codex app-server` over newline-delimited JSON-RPC and
+streams turns to a Next.js workspace as Server-Sent Events. Each adapter is an
+independent child process speaking MCP on stdio.
+
+Adapters generated by Relay register themselves. To add one by hand:
 
 ```toml
 [mcp_servers.minecraft-mcp]
@@ -63,9 +144,8 @@ ARTIFACTS_DIR = "/abs/path/to/codex-adapters/data/artifacts"
 ```
 
 Then hit **Reload MCP** in the UI (or `curl -XPOST localhost:4000/api/mcp/reload`).
-Give it a moment before prompting — reload returns as soon as the config is
-re-read, and a server that hasn't finished its handshake exposes no tools yet.
-`GET /api/mcp/servers` lists what each server is actually offering.
+Give it a moment before prompting — reload returns as soon as the config is re-read,
+and a server mid-handshake exposes no tools yet.
 
 ### macOS permissions
 
@@ -78,75 +158,22 @@ Driving real apps means the OS gets a say. Grant these once:
 | Reading `chat.db` | System Settings → Privacy → **Full Disk Access** |
 | Synthetic clicks | System Settings → Privacy → **Accessibility** |
 
-Without the Chrome setting every JS call fails with `-2700`; the adapter detects
-that specific case and returns the instruction instead of a generic error.
-
----
-
-## The contract
-
-Every adapter implements the same triad, defined in
-[`adapter-contract/CONTRACT.md`](adapter-contract/CONTRACT.md):
-
-1. **`observe_*`** — cheap, read-only state. Safe to call anytime, no side effects.
-2. **action tools** — verbs that change the app, named for what they do.
-3. **`capture_*`** — writes a file under `ARTIFACTS_DIR` and returns its path.
-
-That third one is the interesting one. **Artifacts are how apps hand off to each
-other**: Minecraft exports a build as a JSON schematic, and the next adapter reads
-it. The contract is what makes apps composable rather than isolated.
-
-Two rules that are not negotiable:
-
-- **stdout is protocol-only.** One stray byte kills the transport. Diagnostics go
-  to stderr.
-- **Adapters return errors, they don't throw.** A crashed adapter fails the whole
-  turn.
-
----
-
-## Adapters
-
-| Adapter | Tools | What it drives |
-| --- | --: | --- |
-| [`minecraft-mcp`](adapters/minecraft-mcp) | 28 | Real survival via a mineflayer bot — gather, craft, smelt, fight, build. First-person POV rendered headless and returned to the model **as vision**. No `/give`, no cheats. |
-| [`clash-royale-mcp`](adapters/clash-royale-mcp) | 9 | Plays a live match on a mirrored phone; card deploys go through a compiled Swift mouse driver for pixel accuracy. |
-| [`imessage-listener-mcp`](adapters/imessage-listener-mcp) | 7 | Manages the iMessage→Codex listener service — start, stop, and control trusted senders without shell access. |
-| [`messages-mcp`](adapters/messages-mcp) | 6 | Sends iMessages to any number or contact; reads chats. |
-| [`chrome-mcp`](adapters/chrome-mcp) | 5 | Reads and fills web forms through injected JavaScript. **Refuses submit-like controls** unless explicitly opted in. |
-| [`obs-mcp`](adapters/obs-mcp) | 5 | Scene switching and recording. |
-| [`applescript-mcp`](adapters/applescript-mcp) | 3 | The escape hatch: arbitrary AppleScript, screenshots, frontmost-app state. Anything without a purpose-built adapter still has a path. |
-
----
-
-## The generator
-
-The point isn't any single adapter — it's that Relay writes them.
-
-```bash
-npm run generate -- new blender --intent "drive Blender: import a mesh, render a frame"
-```
-
-The flow is **propose → review → generate → smoke test → register → verify**. The
-adapter contract is embedded in the generator's own prompt, so generated adapters
-and hand-written ones satisfy the same spec. A generated server that fails its
-smoke test is never registered, so it never reaches the agent.
-
-Pass `--review` to approve the proposed tool surface before any code is written.
+Without the Chrome setting every JS call fails with `-2700`; the adapter detects that
+case and returns the instruction instead of a generic error.
 
 ---
 
 ## Layout
 
 ```
-adapters/            one stdio MCP server per app
+adapters/            one stdio MCP server per app — generated or hand-written
   _shared/           debug-log.mjs, shared by every adapter
-adapter-contract/    CONTRACT.md — the spec both humans and the generator follow
+adapter-contract/    CONTRACT.md — the spec humans and the generator both follow
 backend/src/
   codex/             app-server client, transport, protocol types, UI stream mapping
-  generator.ts       adapter authoring
-  registry.ts        smoke test + config.toml registration
-  server.ts          Fastify: /api/chat (SSE), /api/mcp/reload, /artifacts
+  generator.ts       the two-turn authoring flow
+  registry.ts        smoke test, config.toml registration, verify, unregister
+  server.ts          Fastify: /api/chat (SSE), /api/mcp/*, /artifacts
 frontend/            Next.js + shadcn workspace UI
 ```
 
@@ -161,10 +188,10 @@ tail -f $TMPDIR/codex-adapter-logs/messages-mcp.log
 ```
 
 Entries are JSON: `tool.call.start`, `applescript.run.end`, `fill_field.result`,
-`rpc.received`. Set `ADAPTER_DEBUG=0` to disable, `ADAPTER_LOG_DIR` to relocate.
+`rpc.received`. `ADAPTER_DEBUG=0` disables, `ADAPTER_LOG_DIR` relocates.
 
 **If the agent claims it "can't" do something, it almost certainly has no tool for
-it.** Check what's actually loaded before you debug the adapter:
+it.** Check what's loaded before debugging the adapter:
 
 ```bash
 curl -s localhost:4000/api/mcp/servers | jq '.servers[] | {name, tools: (.tools|length)}'
@@ -173,34 +200,33 @@ curl -s localhost:4000/api/mcp/servers | jq '.servers[] | {name, tools: (.tools|
 A server showing `0` tools is connected but useless — it either failed to start or
 hasn't finished handshaking.
 
-One known gotcha: Codex's built-in `apps` connector mounts ~125 remote tools
-alongside your local ones. Small models start picking from ~150 tools and miss the
-local ones entirely, answering "I can't do that" instead of calling the adapter.
-Launching app-server with `--disable apps` cuts it back to just this repo's tools.
+One known gotcha: Codex's built-in `apps` connector mounts ~125 remote tools next to
+your local ones. Small models then pick from ~150 tools, miss the local ones, and
+answer "I can't do that" instead of calling your adapter. Launching app-server with
+`--disable apps` cuts it back to just this repo's tools.
 
 ---
 
 ## Things that cost us hours
 
-Driving real desktop software is mostly a fight with undocumented behavior. These
-are written up properly in each adapter's README:
+Driving real desktop software is mostly a fight with undocumented behavior. Each is
+written up properly in its adapter's README:
 
 - **macOS is quietly gutting the Messages AppleScript dictionary.** Half the
-  documented properties now throw `-1728`. The adapter routes around the missing
-  ones and reports whether a send was *confirmed* rather than assuming success.
+  documented properties now throw `-1728`. The adapter routes around the missing ones
+  and reports whether a send was *confirmed* rather than assuming success.
 - **`send` blocks on a reply that never comes** for an existing thread — but a
-  brand-new conversation needs that round trip to deliver. Two send paths, chosen
-  by whether a thread already exists.
-- **CSS `nth-of-type` is not a document index.** It counts siblings under one
-  parent. Using it as "the Nth input on the page" silently broke every checkbox on
-  our first live run. Selectors are now full ancestor paths, verified to resolve
-  back to the element.
+  brand-new conversation needs that round trip to deliver. Two send paths, chosen by
+  whether a thread already exists.
+- **CSS `nth-of-type` is not a document index.** It counts siblings under one parent.
+  Using it as "the Nth input on the page" silently broke every checkbox on our first
+  live run. Selectors are now full ancestor paths, verified to resolve back to the
+  element.
 - **React ignores direct `.value` assignment**, so a field looks filled and submits
   empty. Writes go through the prototype's native setter, dispatch `input` and
   `change`, then read back to prove it stuck.
-- **Truncated echoes make false negatives.** A verification field capped at 300
-  chars will never equal a 4000-char write — comparing them reports failure on a
-  perfect fill.
+- **Truncated echoes make false negatives.** A verification field capped at 300 chars
+  never equals a 4000-char write — comparing them reports failure on a perfect fill.
 
 ---
 
@@ -208,9 +234,11 @@ are written up properly in each adapter's README:
 
 Filling a form is reversible. Submitting it is not.
 
-`chrome-mcp` refuses to click anything matching `submit|save|confirm|send|post|publish|finish`
-unless the caller passes `allowSubmit: true`. That guard lives in the adapter, not
-in a prompt, so an agent that gets confused fills the form and stops.
+`chrome-mcp` refuses to click anything matching
+`submit|save|confirm|send|post|publish|finish` unless the caller passes
+`allowSubmit: true`. That guard lives in the adapter, not in a prompt, so an agent
+that gets confused fills the form and stops.
 
-The same principle runs through the repo: `observe_*` and `capture_*` are always
-safe, actions are explicit, and the irreversible step is opt-in.
+The same principle runs through the repo, and the generator bakes it into what it
+writes: `observe_*` and `capture_*` are always safe, actions are explicit, and the
+irreversible step is opt-in.
