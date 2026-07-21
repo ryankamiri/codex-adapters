@@ -92,6 +92,7 @@ export async function startHarness(argv = process.argv.slice(2)): Promise<Runnin
     allowedSenders: config.allowedSenders,
     pollIntervalMs: config.pollIntervalMs,
     maxQueuedTasks: config.maxQueuedTasks,
+    freshnessWindowMs: config.freshnessWindowMs,
   });
   const worker = new CodexTaskWorker({
     allowedMcpServers: config.allowedMcpServers,

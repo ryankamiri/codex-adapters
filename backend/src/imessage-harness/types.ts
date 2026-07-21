@@ -54,6 +54,7 @@ export interface MessageObservation {
 }
 
 export type FilterReason =
+  | "stale"
   | "outbound"
   | "wrong_service"
   | "unauthorized_sender"

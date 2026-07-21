@@ -22,7 +22,7 @@ test("first poll establishes a watermark and never queues historical messages", 
     appendFixtureMessage(writer, { guid: "historical", text: "do not run", sender: "+15551234567" });
     const store = new SqliteMessagesStore(messagesPath);
     const ledger = new SqliteHarnessLedger(join(dir, "ledger.db"));
-    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567" });
+    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567", freshnessWindowMs: Number.MAX_SAFE_INTEGER });
 
     assert.deepEqual(await listener.pollOnce(), {
       initialized: true, watermark: 1, scanned: 0, queued: 0, filtered: 0, duplicates: 0,
@@ -45,6 +45,35 @@ test("first poll establishes a watermark and never queues historical messages", 
   }
 });
 
+test("filters a backlog older than the freshness window so turning on never replays old messages", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "listener-fresh-"));
+  try {
+    const messagesPath = join(dir, "chat.db");
+    const writer = createMessagesFixture(messagesPath);
+    const store = new SqliteMessagesStore(messagesPath);
+    const ledger = new SqliteHarnessLedger(join(dir, "ledger.db"));
+    // Default 60s window: a stale cursor must not cause old messages to be answered.
+    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567" });
+    await listener.pollOnce();
+
+    const nowAppleSeconds = Math.floor((Date.now() - Date.UTC(2001, 0, 1)) / 1000);
+    appendFixtureMessage(writer, { guid: "old", text: "should be ignored", sender: "+15551234567", date: 10 });
+    appendFixtureMessage(writer, { guid: "recent", text: "answer me", sender: "+15551234567", date: nowAppleSeconds });
+
+    const result = await listener.pollOnce();
+    assert.deepEqual({ scanned: result.scanned, queued: result.queued, filtered: result.filtered }, { scanned: 2, queued: 1, filtered: 1 });
+    const task = await ledger.claimNextQueued();
+    assert.equal(task?.inbound.guid, "recent");
+    assert.equal(await ledger.claimNextQueued(), null);
+
+    ledger.close();
+    store.close();
+    writer.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("routes unknown senders while filtering outbound, group, attachment and reaction rows", async () => {
   const dir = mkdtempSync(join(tmpdir(), "listener-"));
   try {
@@ -52,7 +81,7 @@ test("routes unknown senders while filtering outbound, group, attachment and rea
     const writer = createMessagesFixture(messagesPath);
     const store = new SqliteMessagesStore(messagesPath);
     const ledger = new SqliteHarnessLedger(join(dir, "ledger.db"));
-    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567", batchSize: 2 });
+    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567", batchSize: 2, freshnessWindowMs: Number.MAX_SAFE_INTEGER });
     await listener.pollOnce();
 
     appendFixtureMessage(writer, { guid: "wrong", text: "x", sender: "+15550000000" });
@@ -95,7 +124,7 @@ test("unknown senders receive at most five messages from the preceding five-minu
     appendFixtureMessage(writer, { guid: "c5", text: "five", sender, date: 340 });
     const store = new SqliteMessagesStore(messagesPath);
     const ledger = new SqliteHarnessLedger(join(dir, "ledger.db"));
-    const listener = new ImessageListener({ store, ledger, allowedSenders: ["+15551234567"] });
+    const listener = new ImessageListener({ store, ledger, allowedSenders: ["+15551234567"], freshnessWindowMs: Number.MAX_SAFE_INTEGER });
     await listener.pollOnce();
     appendFixtureMessage(writer, { guid: "current", text: "six", sender, date: 400 });
     assert.equal((await listener.pollOnce()).queued, 1);
@@ -118,7 +147,7 @@ test("GUID uniqueness prevents duplicate tasks across a new database cursor", as
     const writer = createMessagesFixture(messagesPath);
     const store = new SqliteMessagesStore(messagesPath);
     const ledger = new SqliteHarnessLedger(join(dir, "ledger.db"));
-    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567" });
+    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567", freshnessWindowMs: Number.MAX_SAFE_INTEGER });
     await listener.pollOnce();
     appendFixtureMessage(writer, { guid: "same-guid", text: "first", sender: "+15551234567" });
     appendFixtureMessage(writer, { guid: "same-guid", text: "second", sender: "+15551234567", chatGuid: "second-chat" });
@@ -143,7 +172,7 @@ test("ledger outbox is idempotent and recovers ambiguous sends as uncertain", as
     const writer = createMessagesFixture(messagesPath);
     const store = new SqliteMessagesStore(messagesPath);
     const ledger = new SqliteHarnessLedger(join(dir, "ledger.db"));
-    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567" });
+    const listener = new ImessageListener({ store, ledger, allowedSender: "+15551234567", freshnessWindowMs: Number.MAX_SAFE_INTEGER });
     await listener.pollOnce();
     appendFixtureMessage(writer, { guid: "outbox-guid", text: "run", sender: "+15551234567" });
     await listener.pollOnce();
@@ -186,6 +215,7 @@ test("queue capacity fails closed and approval decisions are durably auditable",
       ledger,
       allowedSender: "+15551234567",
       maxQueuedTasks: 1,
+      freshnessWindowMs: Number.MAX_SAFE_INTEGER,
     });
     await listener.pollOnce();
     appendFixtureMessage(writer, { guid: "first", text: "one", sender: "+15551234567" });

@@ -13,6 +13,7 @@ const config: ImessageHarnessConfig = {
   allowShell: false,
   allowFileChanges: false,
   pollIntervalMs: 1_000,
+  freshnessWindowMs: 60_000,
   debounceMs: 1_500,
   maxTaskRuntimeMs: 60_000,
   maxReplyCharacters: 1_500,

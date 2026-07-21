@@ -10,6 +10,8 @@ export interface ImessageListenerOptions {
   pollIntervalMs?: number;
   batchSize?: number;
   maxQueuedTasks?: number;
+  /** Ignore messages older than this at scan time. Prevents replaying a backlog on start-up. */
+  freshnessWindowMs?: number;
   onError?: (error: unknown) => void;
 }
 
@@ -20,10 +22,17 @@ export function normalizeE164(raw: string): string | null {
   return /^\+[1-9][0-9]{7,14}$/.test(normalized) ? normalized : null;
 }
 
-function authorize(observation: MessageObservation, allowedSenders: ReadonlySet<string>, store: MessagesStore):
+function authorize(
+  observation: MessageObservation,
+  allowedSenders: ReadonlySet<string>,
+  store: MessagesStore,
+  freshBefore: number,
+):
   | { inbound: InboundMessage; reason: null }
   | { inbound: null; reason: FilterReason } {
   if (!observation.guid) return { inbound: null, reason: "missing_guid" };
+  const receivedMs = Date.parse(observation.receivedAt);
+  if (!Number.isFinite(receivedMs) || receivedMs < freshBefore) return { inbound: null, reason: "stale" };
   if (observation.isFromMe) return { inbound: null, reason: "outbound" };
   if (observation.service !== "iMessage") return { inbound: null, reason: "wrong_service" };
   if (!observation.chatId) return { inbound: null, reason: "missing_chat" };
@@ -75,6 +84,7 @@ export class ImessageListener {
   readonly #pollIntervalMs: number;
   readonly #batchSize: number;
   readonly #maxQueuedTasks: number;
+  readonly #freshnessWindowMs: number;
   readonly #onError: (error: unknown) => void;
   #timer: ReturnType<typeof setTimeout> | null = null;
   #stopped = true;
@@ -94,6 +104,10 @@ export class ImessageListener {
     if (!Number.isSafeInteger(this.#maxQueuedTasks) || this.#maxQueuedTasks < 1) {
       throw new Error("maxQueuedTasks must be a positive safe integer");
     }
+    this.#freshnessWindowMs = options.freshnessWindowMs ?? 60_000;
+    if (!Number.isSafeInteger(this.#freshnessWindowMs) || this.#freshnessWindowMs < 1) {
+      throw new Error("freshnessWindowMs must be a positive safe integer");
+    }
     this.#onError = options.onError ?? ((error) => console.error("iMessage listener poll failed", error));
   }
 
@@ -112,6 +126,7 @@ export class ImessageListener {
     }
 
     let cursor = initialCursor;
+    const freshBefore = Date.now() - this.#freshnessWindowMs;
     let scanned = 0;
     let queued = 0;
     let filtered = 0;
@@ -120,7 +135,7 @@ export class ImessageListener {
       const batch = this.#store.scanAfter(cursor, this.#batchSize);
       if (batch.length === 0) break;
       for (const observation of batch) {
-        const decision = authorize(observation, this.#allowedSenders, this.#store);
+        const decision = authorize(observation, this.#allowedSenders, this.#store, freshBefore);
         const queueFull = decision.inbound != null && this.#ledger.getQueuedTaskCount() >= this.#maxQueuedTasks;
         const result = this.#ledger.recordObservation(
           observation,

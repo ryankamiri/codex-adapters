@@ -22,7 +22,7 @@ approach holds.
 
 ## Demo
 
-📹 **[Watch the demo](<< add your YouTube link >>)** — under 3 minutes.
+📹 **[Watch the demo](https://youtu.be/9w9_2Y6DHaY)** — under 3 minutes.
 
 <!-- screenshots: the workspace UI streaming a turn, and the generator writing an adapter -->
 
@@ -38,29 +38,24 @@ Fastify · Next.js · React · Swift · AppleScript · SQLite · mineflayer · O
 ## Make an adapter for your own app
 
 This is the actual quickstart. Pick something on your machine that no agent can
-currently touch.
+currently touch. First get the workspace running (see
+[**Running the workspace**](#running-the-workspace) below), then just **ask**:
 
-```bash
-git clone https://github.com/ryankamiri/codex-adapters
-cd codex-adapters && npm install
-
-npm run generate -- new spotify --intent "control Spotify: play, pause, skip, search, read what's playing"
-```
+> make a spotify mcp using applescript and register it
 
 That's it. Codex reads the adapter contract, proposes a toolkit, writes
 `adapters/spotify-mcp/server.mjs`, smoke-tests it, and registers it in your
-`~/.codex/config.toml`. Your agent can now drive Spotify.
+`~/.codex/config.toml`. Hit **Reload MCP**, give it a moment to handshake, and your
+agent can drive Spotify:
 
-Useful flags:
+> play my Discover Weekly on Spotify
 
-```bash
-# Approve the tool surface before a line of code is written.
-npm run generate -- new blender --intent "import a mesh, render a frame" --review
+Describe the app however you like — the intent is the prompt. A couple of variations
+that steer the generator:
 
-# Feed it the app's own docs — an AppleScript dictionary, an API reference, notes.
-# Defaults to data/sources/<app>/ if it exists.
-npm run generate -- new logic-pro --intent "..." --sources ~/docs/logic-scripting
-```
+> make a blender mcp — import a mesh, render a frame. show me the toolkit before you write any code.
+
+> make a logic-pro mcp, and read the AppleScript dictionary in ~/docs/logic-scripting first
 
 ### How it decides what to build
 
@@ -96,7 +91,7 @@ Every adapter implements the same triad, defined in
 2. **action tools** — verbs that change the app, named for what they do.
 3. **`capture_*`** — writes a file under `ARTIFACTS_DIR` and returns its path.
 
-The triad is deliberately vague about *how* you reach the app, and that's the whole
+The triad is deliberately vague about _how_ you reach the app, and that's the whole
 trick. Observing might be a network query, an accessibility tree, or a screenshot.
 Acting might be a protocol message, an AppleScript event, or a synthetic click. The
 agent doesn't care — it sees tools either way.
@@ -118,17 +113,17 @@ Two rules that aren't negotiable:
 Seven adapters, and the point is the right-hand column — four fundamentally
 different ways of reaching an app, one contract, one agent interface.
 
-| Adapter | Tools | How it reaches the app |
-| --- | --: | --- |
-| [`minecraft-mcp`](adapters/minecraft-mcp) | 28 | **Network protocol.** A mineflayer bot plays real survival — gather, craft, smelt, duel, build. The live game screen is captured and returned to the model *as vision*. No `/give`, no cheats. |
-| [`clash-royale-mcp`](adapters/clash-royale-mcp) | 9 | **Synthetic input on a mirrored screen.** Card deploys go through a compiled Swift mouse driver, because AppleScript clicks weren't pixel-accurate enough to land a troop on a tile. |
-| [`imessage-listener-mcp`](adapters/imessage-listener-mcp) | 7 | **A managed local service.** Start, stop, and control trusted senders for the iMessage→Codex listener — without handing the agent shell access. |
-| [`messages-mcp`](adapters/messages-mcp) | 6 | **AppleScript + SQLite.** Sends iMessages to any number or contact; reads history straight out of `chat.db`. |
-| [`chrome-mcp`](adapters/chrome-mcp) | 5 | **Injected JavaScript.** Reads and fills web forms in a live tab. Refuses submit-like controls unless explicitly opted in. |
-| [`obs-mcp`](adapters/obs-mcp) | 5 | **App scripting.** Scene switching and recording control. |
-| [`applescript-mcp`](adapters/applescript-mcp) | 3 | **The escape hatch.** Arbitrary AppleScript, screenshots, frontmost-app state — so an app with no purpose-built adapter still has a path today. |
+| Adapter                                                   | Tools | How it reaches the app                                                                                                                                                                         |
+| --------------------------------------------------------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`minecraft-mcp`](adapters/minecraft-mcp)                 |    28 | **Network protocol.** A mineflayer bot plays real survival — gather, craft, smelt, duel, build. The live game screen is captured and returned to the model _as vision_. No `/give`, no cheats. |
+| [`clash-royale-mcp`](adapters/clash-royale-mcp)           |     9 | **Synthetic input on a mirrored screen.** Card deploys go through a compiled Swift mouse driver, because AppleScript clicks weren't pixel-accurate enough to land a troop on a tile.           |
+| [`imessage-listener-mcp`](adapters/imessage-listener-mcp) |     7 | **A managed local service.** Start, stop, and control trusted senders for the iMessage→Codex listener — without handing the agent shell access.                                                |
+| [`messages-mcp`](adapters/messages-mcp)                   |     6 | **AppleScript + SQLite.** Sends iMessages to any number or contact; reads history straight out of `chat.db`.                                                                                   |
+| [`chrome-mcp`](adapters/chrome-mcp)                       |     5 | **Injected JavaScript.** Reads and fills web forms in a live tab. Refuses submit-like controls unless explicitly opted in.                                                                     |
+| [`obs-mcp`](adapters/obs-mcp)                             |     5 | **App scripting.** Scene switching and recording control.                                                                                                                                      |
+| [`applescript-mcp`](adapters/applescript-mcp)             |     3 | **The escape hatch.** Arbitrary AppleScript, screenshots, frontmost-app state — so an app with no purpose-built adapter still has a path today.                                                |
 
-If your app is reachable by *any* of those mechanisms — and on macOS almost
+If your app is reachable by _any_ of those mechanisms — and on macOS almost
 everything is — it can be an adapter.
 
 ---
@@ -146,13 +141,13 @@ Codex does the work in two places:
 - **Generating adapters** — two turns on one persistent thread. Turn A runs
   read-only and has GPT-5.6 propose a toolkit from the contract and the app's docs;
   Turn B, scoped to write only inside `adapters/` with no network access, writes the
-  real `server.mjs`. Sharing a thread means the implementation still knows *why* each
+  real `server.mjs`. Sharing a thread means the implementation still knows _why_ each
   tool was proposed.
 - **Driving apps** — at runtime the backend never calls an adapter tool itself. It
   starts a turn and streams the events back; GPT-5.6 decides which MCP tools to call,
   and in what order, to satisfy the request.
 
-We also built Relay *with* Codex during the hackathon — and one of our own adapters,
+We also built Relay _with_ Codex during the hackathon — and one of our own adapters,
 `chrome-mcp`, filled out a submission form for us, then refused to click Submit.
 
 ---
@@ -190,12 +185,12 @@ and a server mid-handshake exposes no tools yet.
 
 Driving real apps means the OS gets a say. Grant these once:
 
-| Need | Where |
-| --- | --- |
-| Any AppleScript adapter | System Settings → Privacy → **Automation** |
-| `chrome-mcp` | Chrome → View → Developer → **Allow JavaScript from Apple Events** |
-| Reading `chat.db` | System Settings → Privacy → **Full Disk Access** |
-| Synthetic clicks | System Settings → Privacy → **Accessibility** |
+| Need                    | Where                                                              |
+| ----------------------- | ------------------------------------------------------------------ |
+| Any AppleScript adapter | System Settings → Privacy → **Automation**                         |
+| `chrome-mcp`            | Chrome → View → Developer → **Allow JavaScript from Apple Events** |
+| Reading `chat.db`       | System Settings → Privacy → **Full Disk Access**                   |
+| Synthetic clicks        | System Settings → Privacy → **Accessibility**                      |
 
 Without the Chrome setting every JS call fails with `-2700`; the adapter detects that
 case and returns the instruction instead of a generic error.
@@ -253,7 +248,7 @@ written up properly in its adapter's README:
 
 - **macOS is quietly gutting the Messages AppleScript dictionary.** Half the
   documented properties now throw `-1728`. The adapter routes around the missing ones
-  and reports whether a send was *confirmed* rather than assuming success.
+  and reports whether a send was _confirmed_ rather than assuming success.
 - **`send` blocks on a reply that never comes** for an existing thread — but a
   brand-new conversation needs that round trip to deliver. Two send paths, chosen by
   whether a thread already exists.

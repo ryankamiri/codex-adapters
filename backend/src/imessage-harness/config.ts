@@ -15,6 +15,8 @@ export interface ImessageHarnessConfig {
   allowShell: boolean;
   allowFileChanges: boolean;
   pollIntervalMs: number;
+  /** Ignore messages older than this on scan, so turning the harness on never replays a backlog. */
+  freshnessWindowMs: number;
   debounceMs: number;
   maxTaskRuntimeMs: number;
   maxReplyCharacters: number;
@@ -30,6 +32,7 @@ const DEFAULTS: Omit<ImessageHarnessConfig, "allowedSender" | "allowedSenders"> 
   allowShell: false,
   allowFileChanges: false,
   pollIntervalMs: 1_000,
+  freshnessWindowMs: 60_000,
   debounceMs: 1_500,
   maxTaskRuntimeMs: 30 * 60_000,
   maxReplyCharacters: 1_500,
@@ -96,6 +99,7 @@ export function parseHarnessConfig(input: unknown): ImessageHarnessConfig {
     allowShell: merged.allowShell,
     allowFileChanges: merged.allowFileChanges,
     pollIntervalMs: positiveInteger(merged.pollIntervalMs, "pollIntervalMs", 60_000),
+    freshnessWindowMs: positiveInteger(merged.freshnessWindowMs, "freshnessWindowMs", 24 * 60 * 60_000),
     debounceMs: positiveInteger(merged.debounceMs, "debounceMs", 60_000),
     maxTaskRuntimeMs: positiveInteger(merged.maxTaskRuntimeMs, "maxTaskRuntimeMs", 24 * 60 * 60_000),
     maxReplyCharacters: positiveInteger(merged.maxReplyCharacters, "maxReplyCharacters", 10_000),
