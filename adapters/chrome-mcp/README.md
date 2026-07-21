@@ -27,11 +27,25 @@ args = ["<repo>/adapters/chrome-mcp/server.mjs"]
 | `list_tabs` | Every open tab with window/tab index, URL, title. Read-only. |
 | `inspect_form` | Every input/textarea/select with selector, label, type, required, value. Read-only. |
 | `fill_field` | Set one field's value. |
+| `fill_form` | Set and verify a whole page of fields in one fast browser transaction. |
 | `click` | Click an element. **Refuses submit-like controls** unless `allowSubmit: true`. |
 | `read_text` | Visible text of the page or one element. Read-only. |
 
 Always call `inspect_form` first and use the selectors it returns. Guessed selectors
 (`input[name="title"]`, `input[type="text"]`) are the main failure mode.
+
+Prefer `fill_form` when a page has multiple fields. Tool calls are serialized in
+arrival order, so a subsequent `click` cannot race ahead of pending writes. After a
+click, the adapter waits for the page to settle and returns the resulting URL and the
+next page's field inventory; use `applescript-mcp.capture_screenshot` only when a
+visual layout check is useful.
+
+Pages changed through `fill_field` or `fill_form` are tracked as dirty. While a page
+is dirty, `click` refuses sidebar links and other navigation; click **Save & continue**
+first. A successful save clears the guard and allows the workflow to advance.
+If validation prevents advancement but the user explicitly wants to inspect later
+sections, a navigation click may set `allowUnsavedNavigation: true` after the save
+attempt. The override never submits and does not pretend the dirty page was saved.
 
 ## Three things that will bite you
 

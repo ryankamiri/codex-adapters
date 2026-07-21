@@ -59,9 +59,34 @@ const TOOLS = [
     },
   },
   {
+    name: "fill_form",
+    description:
+      "Fill multiple fields in one browser transaction. Prefer this over repeated fill_field calls: it is much faster, preserves field order, verifies every value, and prevents a following click from racing ahead of writes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        urlContains: { type: "string", description: "Substring matching the target tab's URL." },
+        fields: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: {
+              selector: { type: "string", description: "CSS selector from inspect_form." },
+              value: { type: "string", description: "Exact value to set." },
+            },
+            required: ["selector", "value"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["urlContains", "fields"],
+    },
+  },
+  {
     name: "click",
     description:
-      "Click an element by CSS selector. REFUSES submit-like controls (type=submit, or text matching submit/save/confirm/send/post) unless allowSubmit is true, because submitting is an irreversible external side effect. Use it for tabs, expanders, and navigation.",
+      "Click an element by CSS selector, then wait for navigation/UI settling and return the resulting URL plus the next page's form inventory. Calls are serialized, and navigation away from a page changed by fill_field/fill_form is refused until its Save & continue control is clicked successfully. REFUSES submit-like controls unless allowSubmit is true.",
     inputSchema: {
       type: "object",
       properties: {
@@ -71,6 +96,18 @@ const TOOLS = [
           type: "boolean",
           default: false,
           description: "Set true ONLY when the user has explicitly confirmed they want to submit.",
+        },
+        settleMs: {
+          type: "integer",
+          minimum: 0,
+          maximum: 10000,
+          default: 1200,
+          description: "How long to allow navigation or client-side UI updates to settle after the click.",
+        },
+        allowUnsavedNavigation: {
+          type: "boolean",
+          default: false,
+          description: "Explicitly allow navigation after Save & continue was attempted but validation prevented advancement. Use only to inspect later sections; unsaved values will remain unsaved.",
         },
       },
       required: ["urlContains", "selector"],
@@ -232,6 +269,13 @@ const inspectJs = `(function(){${SELECTOR_HELPER}
       label: labelFor(el),
       required: !!el.required,
       maxLength: el.maxLength > 0 ? el.maxLength : undefined,
+      optionCount: el instanceof HTMLSelectElement ? el.options.length : undefined,
+      options: el instanceof HTMLSelectElement && el.options.length <= 50 ? Array.from(el.options).map(function(option){
+        return { value: option.value, text: option.text, selected: option.selected };
+      }) : undefined,
+      selectedOptions: el instanceof HTMLSelectElement && el.options.length > 50 ? Array.from(el.selectedOptions).map(function(option){
+        return { value: option.value, text: option.text };
+      }) : undefined,
       value: (el.value || '').slice(0, 300)
     });
   });
@@ -264,6 +308,7 @@ const fillJs = (selector, value) => `(function(){
   // description looking unfillable.
   return JSON.stringify({
     ok: true,
+    pageUrl: location.href,
     selector: ${JSON.stringify(selector)},
     valueNow: el.value.slice(0, 300),
     valueLength: el.value.length,
@@ -272,13 +317,70 @@ const fillJs = (selector, value) => `(function(){
   });
 })()`;
 
+const fillFormJs = (fields) => `(function(){
+  var fields = ${JSON.stringify(fields)};
+  var results = [];
+  for (var i = 0; i < fields.length; i++) {
+    var item = fields[i];
+    var el = document.querySelector(item.selector);
+    if (!el) {
+      results.push({ selector:item.selector, ok:false, error:'no element for selector' });
+      continue;
+    }
+    var proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
+              : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+              : HTMLInputElement.prototype;
+    var descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (!descriptor || !descriptor.set) {
+      results.push({ selector:item.selector, ok:false, error:'field has no native value setter' });
+      continue;
+    }
+    el.focus();
+    descriptor.set.call(el, item.value);
+    el.dispatchEvent(new Event('input', { bubbles:true }));
+    el.dispatchEvent(new Event('change', { bubbles:true }));
+    el.blur();
+    results.push({
+      selector:item.selector,
+      ok:el.value === item.value,
+      valueLength:el.value.length,
+      matched:el.value === item.value,
+      truncatedByMaxLength:el.value.length < item.value.length
+    });
+  }
+  return JSON.stringify({
+    ok:results.every(function(result){ return result.ok; }),
+    pageUrl:location.href,
+    filled:results.filter(function(result){ return result.ok; }).length,
+    total:results.length,
+    results:results
+  });
+})()`;
+
 const SUBMITTY = /\b(submit|save|confirm|send|post|publish|finish)\b/i;
+
+const clickTargetJs = (selector) => `(function(){
+  var el = document.querySelector(${JSON.stringify(selector)});
+  if (!el) return JSON.stringify({ ok:false, error:'no element for selector' });
+  var anchor = el.closest ? el.closest('a[href]') : null;
+  return JSON.stringify({
+    ok:true,
+    pageUrl:location.href,
+    isNavigation:!!anchor,
+    href:anchor ? anchor.href : '',
+    text:(el.innerText || el.value || '').trim(),
+    type:el.type || ''
+  });
+})()`;
 
 const clickJs = (selector, allowSubmit) => `(function(){
   var el = document.querySelector(${JSON.stringify(selector)});
   if (!el) return JSON.stringify({ ok:false, error:'no element for selector' });
   var text = (el.innerText || el.value || '').trim();
-  var looksSubmit = el.type === 'submit' || ${SUBMITTY}.test(text);
+  var anchor = el.closest ? el.closest('a[href]') : null;
+  // A navigation link may be labelled "Submit" while merely opening the
+  // finalization page. Only form controls are irreversible submit actions.
+  var looksSubmit = el.type === 'submit' || (!anchor && ${SUBMITTY}.test(text));
   if (looksSubmit && !${allowSubmit ? "true" : "false"}) {
     return JSON.stringify({ ok:false, refused:true, reason:'element looks like a submit control', text:text });
   }
@@ -291,6 +393,19 @@ const readTextJs = (selector, limit) => `(function(){
   if (!el) return JSON.stringify({ ok:false, error:'no element for selector' });
   return JSON.stringify({ ok:true, text: (el.innerText || '').slice(0, ${limit}) });
 })()`;
+
+const pageStateJs = `(function(){${SELECTOR_HELPER}
+  var fields = [];
+  document.querySelectorAll('input, textarea, select').forEach(function(el){
+    if (el.type === 'hidden') return;
+    fields.push({ selector:sel(el), type:el.type || '', label:labelFor(el), required:!!el.required, value:(el.value || '').slice(0, 300) });
+  });
+  return JSON.stringify({ url:location.href, title:document.title, fields:fields });
+})()`;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const dirtyPages = new Set();
+const saveAttemptedPages = new Set();
 
 // --- tool dispatch --------------------------------------------------------
 
@@ -350,7 +465,30 @@ async function callTool(id, name, args = {}) {
         ok: parsed.ok,
       });
       if (!parsed.ok) throw new Error(parsed.error || "fill failed");
+      if (parsed.pageUrl) dirtyPages.add(parsed.pageUrl);
       done({ ok: true });
+      return toolResult(id, out);
+    }
+
+    if (name === "fill_form") {
+      if (!Array.isArray(args.fields) || args.fields.length === 0) {
+        throw new Error("fields must be a non-empty array");
+      }
+      for (const [index, field] of args.fields.entries()) {
+        if (typeof field?.selector !== "string" || !field.selector.trim()) {
+          throw new Error(`fields[${index}].selector must be a non-empty string`);
+        }
+        if (typeof field.value !== "string") throw new Error(`fields[${index}].value must be a string`);
+      }
+      const out = await runJs(urlContains, fillFormJs(args.fields));
+      const parsed = JSON.parse(out || "{}");
+      log.debug("fill_form.result", { filled: parsed.filled, total: parsed.total, ok: parsed.ok });
+      if (!parsed.ok) {
+        const failures = (parsed.results || []).filter((result) => !result.ok);
+        throw new Error(`some fields failed: ${JSON.stringify(failures)}`);
+      }
+      if (parsed.pageUrl) dirtyPages.add(parsed.pageUrl);
+      done({ ok: true, filled: parsed.filled });
       return toolResult(id, out);
     }
 
@@ -358,6 +496,21 @@ async function callTool(id, name, args = {}) {
       if (typeof args.selector !== "string" || !args.selector.trim()) {
         throw new Error("selector must be a non-empty string");
       }
+      const target = JSON.parse((await runJs(urlContains, clickTargetJs(args.selector))) || "{}");
+      if (!target.ok) throw new Error(target.error || "could not inspect click target");
+      const unsavedOverrideAllowed = args.allowUnsavedNavigation === true && saveAttemptedPages.has(target.pageUrl);
+      if (target.isNavigation && dirtyPages.has(target.pageUrl) && !unsavedOverrideAllowed) {
+        log.warn("click.unsavedNavigationRefused", { selector: args.selector, pageUrl: target.pageUrl, href: target.href });
+        done({ ok: false, refused: true, unsaved: true });
+        return toolResult(
+          id,
+          `refused: this page has unsaved field changes. Click its Save & continue control before navigating to ${target.href || "another section"}.`,
+          true,
+        );
+      }
+      const isSaveControl = target.type === "submit" || /\bsave\s*(?:&|and)?\s*continue\b/i.test(target.text);
+      const sourceUrl = target.pageUrl;
+      if (isSaveControl && sourceUrl) saveAttemptedPages.add(sourceUrl);
       const out = await runJs(urlContains, clickJs(args.selector, args.allowSubmit === true));
       const parsed = JSON.parse(out || "{}");
       if (parsed.refused) {
@@ -373,8 +526,25 @@ async function callTool(id, name, args = {}) {
       }
       log.debug("click.result", { selector: args.selector, text: parsed.clicked, refused: false, ok: parsed.ok });
       if (!parsed.ok) throw new Error(parsed.error || "click failed");
-      done({ ok: true });
-      return toolResult(id, out);
+      const settleMs = Number.isInteger(args.settleMs) ? Math.min(10_000, Math.max(0, args.settleMs)) : 1200;
+      if (settleMs) await delay(settleMs);
+      let state;
+      try {
+        state = JSON.parse((await runJs(urlContains, pageStateJs)) || "{}");
+      } catch (stateError) {
+        state = { navigationPending: true, note: errorText(stateError) };
+      }
+      const saveAdvanced = isSaveControl && sourceUrl && state.url && state.url !== sourceUrl;
+      if (saveAdvanced) {
+        dirtyPages.delete(sourceUrl);
+        saveAttemptedPages.delete(sourceUrl);
+      }
+      if (isSaveControl && !saveAdvanced) {
+        state.saveSucceeded = false;
+        state.note = state.note || "Save & continue did not advance; validation may have failed. The page remains guarded as unsaved.";
+      }
+      done({ ok: true, resultingUrl: state.url });
+      return toolResult(id, JSON.stringify({ ...parsed, state }, null, 2));
     }
 
     if (name === "read_text") {
@@ -394,6 +564,10 @@ async function callTool(id, name, args = {}) {
 }
 
 const rl = readline.createInterface({ input: process.stdin });
+// AppleScript and browser mutations must run in request order. Without this queue,
+// clients that pipeline MCP calls can click "Save & continue" before preceding
+// fill operations finish, producing partially saved or "untitled" forms.
+let toolQueue = Promise.resolve();
 rl.on("line", (line) => {
   if (!line.trim()) return;
   let message;
@@ -419,7 +593,12 @@ rl.on("line", (line) => {
     log.debug("rpc.tools_list", {});
     send({ jsonrpc: "2.0", id, result: { tools: TOOLS } });
   } else if (method === "tools/call") {
-    void callTool(id, params?.name, params?.arguments);
+    toolQueue = toolQueue
+      .then(() => callTool(id, params?.name, params?.arguments))
+      .catch((error) => {
+        log.error("tool.queue.error", error);
+        return toolResult(id, `tool failed: ${errorText(error)}`, true);
+      });
   } else if (id !== undefined) {
     send({ jsonrpc: "2.0", id, result: {} });
   }

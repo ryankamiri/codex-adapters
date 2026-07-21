@@ -20,6 +20,21 @@ approach holds.
 
 ---
 
+## Demo
+
+📹 **[Watch the demo](<< add your YouTube link >>)** — under 3 minutes.
+
+<!-- screenshots: the workspace UI streaming a turn, and the generator writing an adapter -->
+
+Relay generates a fresh adapter from a one-line intent, then Codex uses the seven
+reference adapters to drive real apps — playing Minecraft, filling a web form, and
+sending an iMessage — all on the laptop.
+
+**Built with:** TypeScript · Node.js · Codex (app-server) · GPT-5.6 · MCP · JSON-RPC ·
+Fastify · Next.js · React · Swift · AppleScript · SQLite · mineflayer · OBS WebSocket
+
+---
+
 ## Make an adapter for your own app
 
 This is the actual quickstart. Pick something on your machine that no agent can
@@ -105,7 +120,7 @@ different ways of reaching an app, one contract, one agent interface.
 
 | Adapter | Tools | How it reaches the app |
 | --- | --: | --- |
-| [`minecraft-mcp`](adapters/minecraft-mcp) | 28 | **Network protocol.** A mineflayer bot plays real survival — gather, craft, smelt, fight, build. First-person POV rendered headless and returned to the model *as vision*. No `/give`, no cheats. |
+| [`minecraft-mcp`](adapters/minecraft-mcp) | 28 | **Network protocol.** A mineflayer bot plays real survival — gather, craft, smelt, duel, build. The live game screen is captured and returned to the model *as vision*. No `/give`, no cheats. |
 | [`clash-royale-mcp`](adapters/clash-royale-mcp) | 9 | **Synthetic input on a mirrored screen.** Card deploys go through a compiled Swift mouse driver, because AppleScript clicks weren't pixel-accurate enough to land a troop on a tile. |
 | [`imessage-listener-mcp`](adapters/imessage-listener-mcp) | 7 | **A managed local service.** Start, stop, and control trusted senders for the iMessage→Codex listener — without handing the agent shell access. |
 | [`messages-mcp`](adapters/messages-mcp) | 6 | **AppleScript + SQLite.** Sends iMessages to any number or contact; reads history straight out of `chat.db`. |
@@ -115,6 +130,30 @@ different ways of reaching an app, one contract, one agent interface.
 
 If your app is reachable by *any* of those mechanisms — and on macOS almost
 everything is — it can be an adapter.
+
+---
+
+## How Codex & GPT-5.6 power Relay
+
+Codex isn't a feature bolted onto Relay — it's the whole runtime. Relay spawns
+`codex app-server` as a child process and drives it over newline-delimited JSON-RPC
+on stdio. Every action is a Codex turn running on **GPT-5.6**: the app-server
+resolves the account's frontier model (GPT-5.6-Sol), and the workspace UI exposes a
+picker across the GPT-5.6 family via `model/list`.
+
+Codex does the work in two places:
+
+- **Generating adapters** — two turns on one persistent thread. Turn A runs
+  read-only and has GPT-5.6 propose a toolkit from the contract and the app's docs;
+  Turn B, scoped to write only inside `adapters/` with no network access, writes the
+  real `server.mjs`. Sharing a thread means the implementation still knows *why* each
+  tool was proposed.
+- **Driving apps** — at runtime the backend never calls an adapter tool itself. It
+  starts a turn and streams the events back; GPT-5.6 decides which MCP tools to call,
+  and in what order, to satisfy the request.
+
+We also built Relay *with* Codex during the hackathon — and one of our own adapters,
+`chrome-mcp`, filled out a submission form for us, then refused to click Submit.
 
 ---
 
@@ -242,3 +281,9 @@ that gets confused fills the form and stops.
 The same principle runs through the repo, and the generator bakes it into what it
 writes: `observe_*` and `capture_*` are always safe, actions are explicit, and the
 irreversible step is opt-in.
+
+---
+
+## Team
+
+Built by @ryankamiri, @AadiBiyani, and @kilehsu.
