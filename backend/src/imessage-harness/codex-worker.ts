@@ -83,8 +83,13 @@ export class CodexTaskWorker {
       options.client ??
       new AppServerClient({
         cwd: options.cwd,
-        defaultSandbox: "read-only",
-        defaultApprovalPolicy: "never",
+        // Max permission, by explicit operator request: the agent drives live
+        // apps (Minecraft, Chrome, OBS) whose adapters need to act outside the
+        // repo. "on-request" rather than "never" so escalations are routed to
+        // the scoped policy above — which both decides AND writes an audit row
+        // to the ledger. "never" would let codex refuse without a record.
+        defaultSandbox: "danger-full-access",
+        defaultApprovalPolicy: "on-request",
         approvals,
       });
     if (options.onEvent) void this.forwardEvents(this.client.events, options.onEvent);
@@ -129,8 +134,8 @@ export class CodexTaskWorker {
         await this.start();
         threadId = await this.client.startThread({
           cwd: this.options.cwd,
-          sandbox: "read-only",
-          approvalPolicy: "never",
+          sandbox: "danger-full-access",
+          approvalPolicy: "on-request",
         });
       } catch {
         return { ok: false, failureCode: "startup", reply: failureReply(input.taskId, "startup") };
@@ -138,7 +143,7 @@ export class CodexTaskWorker {
 
       // Do not normalize, trim, prefix, suffix, or otherwise transform input.prompt.
       const turn = this.client.runTurn(threadId, input.prompt, {
-        approvalPolicy: "never",
+        approvalPolicy: "on-request",
         ...(this.options.model ? { model: this.options.model } : {}),
       });
       const messagesPromise = finalAgentText(turn.events).catch(() => []);

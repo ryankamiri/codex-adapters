@@ -1,0 +1,11 @@
+{
+  "name": "spotify-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP adapter for controlling Spotify on macOS through AppleScript",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

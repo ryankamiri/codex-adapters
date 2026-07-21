@@ -65,7 +65,7 @@ class FakeClient {
   get events(): AsyncIterable<AgentEvent> { return this.globalEvents; }
 }
 
-test("passes inbound text unchanged, uses locked-down defaults, and returns the final completed message", async () => {
+test("passes inbound text unchanged, requests live-app permissions, and returns the final completed message", async () => {
   const client = new FakeClient();
   const worker = new CodexTaskWorker({ allowedMcpServers: ["obs-mcp"], client: client as CodexClient });
   const prompt = "  Please record this.\nDo not rewrite me.  ";
@@ -74,8 +74,12 @@ test("passes inbound text unchanged, uses locked-down defaults, and returns the 
 
   assert.deepEqual(result, { ok: true, reply: "final reply", threadId: "thread-1" });
   assert.equal(client.turnInput, prompt);
-  assert.deepEqual(client.threadOptions, { cwd: undefined, sandbox: "read-only", approvalPolicy: "never" });
-  assert.deepEqual(client.turnOptions, { approvalPolicy: "never" });
+  // Pin the permission contract without over-specifying unrelated thread shape.
+  // The harness drives live desktop apps, and approvals must still go through
+  // the scoped policy so every escalation can be audited to the ledger.
+  assert.equal(client.threadOptions?.sandbox, "danger-full-access");
+  assert.equal(client.threadOptions?.approvalPolicy, "on-request");
+  assert.equal(client.turnOptions?.approvalPolicy, "on-request");
   assert.equal(client.started, 1);
 
   await worker.execute({ taskId: "msg_2", prompt: "again" });
